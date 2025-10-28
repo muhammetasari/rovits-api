@@ -41,8 +41,8 @@ export class GooglePlacesService {
                 if (response.status === 404) {
                     throw new NotFoundException(`Place not found with ID: ${placeId}`);
                 }
-                if (response.status === 403 || response.status === 401) {
-                    // Google API Key hatası veya yetkisiz erişim
+                if (response.status === 403 || response.status === 401 || response.status === 400) { // 400 eklendi
+                    // Google API Key hatası (genellikle 400, 401 veya 403 döner)
                     throw new UnauthorizedException('Failed to authenticate with Google Places API. Check API Key.');
                 }
                 // Diğer Google kaynaklı hatalar için
@@ -83,7 +83,7 @@ export class GooglePlacesService {
                 const error = await response.json();
                 console.error('Google Places API Error (searchPlace):', error);
 
-                if (response.status === 403 || response.status === 401) {
+                if (response.status === 403 || response.status === 401 || response.status === 400) { // 400 eklendi
                     throw new UnauthorizedException('Failed to authenticate with Google Places API. Check API Key.');
                 }
                 throw new BadGatewayException('Upstream Google Search API returned an error.');
