@@ -1,61 +1,104 @@
-import { Injectable } from '@nestjs/common';
+import {
+    Injectable,
+    InternalServerErrorException,
+    NotFoundException,
+    BadGatewayException,
+    UnauthorizedException,
+    HttpException,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 
 @Injectable()
 export class GooglePlacesService {
-  private apiKey: string;
+    private apiKey: string;
 
-  constructor(private configService: ConfigService) {
-    this.apiKey = this.configService.get<string>('GOOGLE_PLACES_API_KEY') || '';
-  }
-
-  async getPlaceDetails(placeId: string) {
-    try {
-      console.log('API Key:', this.apiKey ? 'Exists' : 'Missing');
-      console.log('Place ID:', placeId);
-
-      const url = `https://places.googleapis.com/v1/places/${placeId}`;
-
-      const response = await fetch(url, {
-        method: 'GET',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-Goog-Api-Key': this.apiKey,
-          'X-Goog-FieldMask': 'id,displayName,formattedAddress,location,rating,types,regularOpeningHours,currentOpeningHours,photos'
+    constructor(private configService: ConfigService) {
+        this.apiKey = this.configService.get<string>('GOOGLE_PLACES_API_KEY') || '';
+        if (!this.apiKey) {
+            // API Key yoksa sunucu başlarken hata ver, daha güvenli.
+            throw new Error('GOOGLE_PLACES_API_KEY is not defined in environment variables.');
         }
-      });
-
-      if (!response.ok) {
-        const error = await response.json();
-        console.error('Google Places API Error:', error);
-        throw new Error(JSON.stringify(error));
-      }
-
-      return await response.json();
-    } catch (error) {
-      console.error('Error:', error);
-      throw error;
     }
-  }
 
-  async searchPlace(query: string) {
-    try {
-      const url = 'https://places.googleapis.com/v1/places:searchText';
+    async getPlaceDetails(placeId: string) {
+        try {
+            const url = `https://places.googleapis.com/v1/places/${placeId}`;
 
-      const response = await fetch(url, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-Goog-Api-Key': this.apiKey,
-          'X-Goog-FieldMask': 'places.id,places.displayName,places.formattedAddress'
-        },
-        body: JSON.stringify({ textQuery: query })
-      });
+            const response = await fetch(url, {
+                method: 'GET',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-Goog-Api-Key': this.apiKey,
+                    'X-Goog-FieldMask': 'id,displayName,formattedAddress,location,rating,types,regularOpeningHours,currentOpeningHours,photos'
+                }
+            });
 
-      return await response.json();
-    } catch (error) {
-      console.error('Search Error:', error);
-      throw error;
+            if (!response.ok) {
+                // YENİ: Gelişmiş Hata Yönetimi
+                const error = await response.json();
+                console.error('Google Places API Error (getPlaceDetails):', error);
+
+                if (response.status === 404) {
+                    throw new NotFoundException(`Place not found with ID: ${placeId}`);
+                }
+                if (response.status === 403 || response.status === 401) {
+                    // Google API Key hatası veya yetkisiz erişim
+                    throw new UnauthorizedException('Failed to authenticate with Google Places API. Check API Key.');
+                }
+                // Diğer Google kaynaklı hatalar için
+                throw new BadGatewayException('Upstream Google Places API returned an error.');
+            }
+
+            return await response.json();
+
+        } catch (error) {
+            // YENİ: Hata yakalama
+            // Eğer 'fetch'in kendisi (örn. ağ hatası) patlarsa veya
+            // bizim fırlattığımız bir HttpException ise tekrar fırlat.
+            if (error instanceof HttpException) {
+                throw error;
+            }
+
+            console.error('Error in getPlaceDetails service:', error);
+            throw new InternalServerErrorException(error.message);
+        }
     }
-  }
+
+    async searchPlace(query: string) {
+        try {
+            const url = 'https://places.googleapis.com/v1/places:searchText';
+
+            const response = await fetch(url, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-Goog-Api-Key': this.apiKey,
+                    'X-Goog-FieldMask': 'places.id,places.displayName,places.formattedAddress'
+                },
+                body: JSON.stringify({ textQuery: query })
+            });
+
+            // YENİ: 'searchPlace' için eksik olan response.ok kontrolü eklendi.
+            if (!response.ok) {
+                const error = await response.json();
+                console.error('Google Places API Error (searchPlace):', error);
+
+                if (response.status === 403 || response.status === 401) {
+                    throw new UnauthorizedException('Failed to authenticate with Google Places API. Check API Key.');
+                }
+                throw new BadGatewayException('Upstream Google Search API returned an error.');
+            }
+
+            return await response.json();
+
+        } catch (error) {
+            // YENİ: Hata yakalama
+            if (error instanceof HttpException) {
+                throw error;
+            }
+
+            console.error('Error in searchPlace service:', error);
+            throw new InternalServerErrorException(error.message);
+        }
+    }
 }

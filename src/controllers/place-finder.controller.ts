@@ -1,5 +1,6 @@
 import { Controller, Get, Post, Query, Body } from '@nestjs/common';
 import { GooglePlacesService } from '../services/google-places.service';
+import { BulkSearchDto } from '../dto/bulk-search.dto'; // DTO import edildi
 
 @Controller('place-finder')
 export class PlaceFinderController {
@@ -18,6 +19,9 @@ export class PlaceFinderController {
         if (!query) {
             return { error: 'q parameter required' };
         }
+
+        // Not: Bu endpoint için de DTO (örn: SearchDto) kullanılabilir.
+        // Şimdilik orijinal halini koruyoruz.
         const result = await this.googlePlaces.searchPlace(query);
         return {
             query,
@@ -31,32 +35,49 @@ export class PlaceFinderController {
      * Toplu yer arama - Production API
      * URL: POST /place-finder/bulk-search
      * Body: { "queries": ["Yer1", "Yer2"] }
+     *
+     * GÜNCELLENDİ:
+     * 1. Performans: Promise.all ile paralelleştirildi.
+     * 2. Validasyon: @Body() artık BulkSearchDto kullanıyor.
      */
     @Post('bulk-search')
-    async bulkSearch(@Body() body: { queries: string[] }) {
-        const results: any[] = [];
+    async bulkSearch(@Body() body: BulkSearchDto) {
 
-        for (const query of body.queries) {
-            try {
-                const result = await this.googlePlaces.searchPlace(query);
-                results.push({
-                    query,
-                    placeId: result.places?.[0]?.id,
-                    name: result.places?.[0]?.displayName?.text,
-                    address: result.places?.[0]?.formattedAddress
+        const searchPromises = body.queries.map(query => {
+            return this.googlePlaces.searchPlace(query)
+                .then(result => {
+                    return {
+                        query,
+                        placeId: result.places?.[0]?.id,
+                        name: result.places?.[0]?.displayName?.text,
+                        address: result.places?.[0]?.formattedAddress
+                    };
+                })
+                .catch(error => {
+                    // Servis katmanından HttpException gelirse (örn. 401 API Key Hatası)
+                    // Promise.all başarısız olur. Bu catch bloğu sadece
+                    // Google'dan 200 OK ama "yer bulunamadı" durumunu değil,
+                    // fırlatılan gerçek hataları da yönetebilmeli.
+                    // Şimdilik basit hata formatını koruyalım:
+                    return {
+                        query,
+                        error: 'Not found or request failed'
+                    };
                 });
-                await new Promise(resolve => setTimeout(resolve, 200));
-            } catch (error) {
-                results.push({ query, error: 'Not found' });
-            }
-        }
+        });
 
+        const results = await Promise.all(searchPromises);
         return results;
     }
 
     /**
      * Detaylı bilgi - Production API
      * URL: /place-finder/details?placeId=xxx veya ?name=Galata Tower
+     *
+     * GÜNCELLENDİ:
+     * 1. Hata Yönetimi: try...catch blokları kaldırıldı.
+     * Artık GooglePlacesService'ten fırlatılan (örn: NotFoundException)
+     * hatalar doğrudan NestJS tarafından yönetilecek (örn. 404).
      */
     @Get('details')
     async getDetails(
@@ -65,44 +86,34 @@ export class PlaceFinderController {
     ) {
         // Öncelik: placeId varsa direkt kullan
         if (placeId) {
-            try {
-                return await this.googlePlaces.getPlaceDetails(placeId);
-            } catch (error) {
-                return {
-                    error: 'Place not found with provided placeId',
-                    placeId
-                };
-            }
+            // try...catch kaldırıldı.
+            return await this.googlePlaces.getPlaceDetails(placeId);
         }
 
         // placeId yoksa ama name varsa, önce ara sonra detay çek
         if (name) {
-            try {
-                const searchResult = await this.googlePlaces.searchPlace(name);
-                const foundPlaceId = searchResult.places?.[0]?.id;
+            // try...catch kaldırıldı.
+            const searchResult = await this.googlePlaces.searchPlace(name);
+            const foundPlaceId = searchResult.places?.[0]?.id;
 
-                if (!foundPlaceId) {
-                    return {
-                        error: 'No place found with provided name',
-                        searchedName: name
-                    };
-                }
-
-                const details = await this.googlePlaces.getPlaceDetails(foundPlaceId);
-
+            if (!foundPlaceId) {
+                // Burada 404 fırlatmak daha doğru olurdu,
+                // ancak orijinal hatayı koruyoruz:
                 return {
-                    ...details,
-                    _searchInfo: {
-                        searchedName: name,
-                        foundPlaceId: foundPlaceId
-                    }
-                };
-            } catch (error) {
-                return {
-                    error: 'Failed to fetch place details',
+                    error: 'No place found with provided name',
                     searchedName: name
                 };
             }
+
+            const details = await this.googlePlaces.getPlaceDetails(foundPlaceId);
+
+            return {
+                ...details,
+                _searchInfo: {
+                    searchedName: name,
+                    foundPlaceId: foundPlaceId
+                }
+            };
         }
 
         return {
@@ -127,6 +138,7 @@ export class PlaceFinderController {
         if (!query) {
             return { error: 'q parameter required' };
         }
+        // Not: try...catch burada da kaldırılmalı
         return await this.googlePlaces.searchPlace(query);
     }
 
@@ -139,6 +151,7 @@ export class PlaceFinderController {
         if (!placeId) {
             return { error: 'placeId parameter required' };
         }
+        // Not: try...catch burada da kaldırılmalı
         return await this.googlePlaces.getPlaceDetails(placeId);
     }
 
@@ -166,13 +179,13 @@ export class PlaceFinderController {
                     bulkSearch: {
                         method: 'POST',
                         url: '/place-finder/bulk-search',
-                        description: 'Toplu yer arama',
+                        description: 'Toplu yer arama (Validasyon Aktif)',
                         body: { queries: ['Yer1', 'Yer2'] }
                     },
                     details: {
                         method: 'GET',
                         url: '/place-finder/details?placeId={id} veya ?name={name}',
-                        description: 'Detaylı bilgi (placeId veya isim ile)',
+                        description: 'Detaylı bilgi (Hata Yönetimi Aktif)',
                         examples: [
                             '/place-finder/details?placeId=ChIJ...',
                             '/place-finder/details?name=Galata Tower'
