@@ -6,7 +6,7 @@ export class PlaceFinderController {
     constructor(private googlePlaces: GooglePlacesService) {}
 
     // ========================================
-    // PRODUCTION ENDPOINTSd
+    // PRODUCTION ENDPOINTS
     // ========================================
 
     /**
