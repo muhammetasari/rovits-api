@@ -10,7 +10,7 @@ import { AdminController } from './controllers/admin.controller';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { APP_GUARD } from '@nestjs/core';
 import { BullModule } from '@nestjs/bullmq';
-//import { JobProcessorModule } from './job-processor/job-processor.module';
+import { JobProcessorModule } from './job-processor/job-processor.module';
 
 @Module({
     imports: [
@@ -30,8 +30,7 @@ import { BullModule } from '@nestjs/bullmq';
             }),
             inject: [ConfigService],
         }),
-        // --- Kuyruğu AppModule'de Tekrar Kaydet (DÜZELTME) ---
-        // Hem AdminController hem de JobProcessorModule bu kuyruğa erişmeli.
+        // --- Kuyruğu AppModule'de Tekrar Kaydet ---
         BullModule.registerQueue({
             name: 'syncQueue',
         }),
@@ -47,6 +46,9 @@ import { BullModule } from '@nestjs/bullmq';
             inject: [ConfigService],
         }),
         MongooseModule.forFeature([{ name: Place.name, schema: PlaceSchema }]),
+
+        // --- JobProcessorModule'ü imports dizisine ekleyin ---
+        JobProcessorModule,
     ],
     controllers: [
         PlaceFinderController,
