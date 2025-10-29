@@ -1,13 +1,10 @@
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
-import { ApiKeyGuard } from './guards/api-key.guard';
 import { ValidationPipe } from '@nestjs/common';
 
 async function bootstrap() {
     const app = await NestFactory.create(AppModule);
 
-    const apiKeyGuard = app.get(ApiKeyGuard);
-    app.useGlobalGuards(apiKeyGuard);
     app.useGlobalPipes(
         new ValidationPipe({
             whitelist: true,
@@ -15,7 +12,7 @@ async function bootstrap() {
             transform: true,
         }),
     );
-
+    app.enableCors();
     await app.listen(3000);
 }
 bootstrap();

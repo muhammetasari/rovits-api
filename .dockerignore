@@ -1,0 +1,41 @@
+# .dockerignore
+
+# Git
+.git
+.gitignore
+
+# Dependencies (copied separately in Dockerfile)
+node_modules
+
+# Build output (copied from build stage in Dockerfile)
+dist
+build
+
+# Environment files (should be injected, not baked in)
+.env
+.env.*
+!/.env.example
+
+# IDE / Editor specific
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS specific
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Testing artifacts
+coverage/
+.nyc_output/
+
+# TypeScript build info
+*.tsbuildinfo

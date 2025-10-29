@@ -7,10 +7,35 @@ import { ApiKeyGuard } from './guards/api-key.guard';
 import { Place, PlaceSchema } from './schemas/place.schema';
 import { DataSyncService } from './services/data-sync.service';
 import { AdminController } from './controllers/admin.controller';
+import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
+import { APP_GUARD } from '@nestjs/core';
+import { BullModule } from '@nestjs/bullmq';
+//import { JobProcessorModule } from './job-processor/job-processor.module';
 
 @Module({
     imports: [
         ConfigModule.forRoot({ isGlobal: true }),
+        ThrottlerModule.forRoot([{
+            ttl: 60000,
+            limit: 60,
+        }]),
+        BullModule.forRootAsync({
+            imports: [ConfigModule],
+            useFactory: async (configService: ConfigService) => ({
+                connection: {
+                    host: configService.get<string>('REDIS_HOST', 'localhost'),
+                    port: configService.get<number>('REDIS_PORT', 6379),
+                    // password: configService.get<string>('REDIS_PASSWORD'),
+                },
+            }),
+            inject: [ConfigService],
+        }),
+        // --- Kuyruğu AppModule'de Tekrar Kaydet (DÜZELTME) ---
+        // Hem AdminController hem de JobProcessorModule bu kuyruğa erişmeli.
+        BullModule.registerQueue({
+            name: 'syncQueue',
+        }),
+        // --- Mongoose Yapılandırması ---
         MongooseModule.forRootAsync({
             imports: [ConfigModule],
             useFactory: async (configService: ConfigService) => ({
@@ -31,6 +56,10 @@ import { AdminController } from './controllers/admin.controller';
         GooglePlacesService,
         ApiKeyGuard,
         DataSyncService,
+        {
+            provide: APP_GUARD,
+            useClass: ThrottlerGuard,
+        },
     ],
 })
 export class AppModule {}

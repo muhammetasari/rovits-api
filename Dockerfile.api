@@ -1,0 +1,53 @@
+# Dockerfile.api
+
+# --- Aşama 1: Bağımlılıkları Yükleme ---
+# Belirli bir Node.js LTS sürümünü temel alalım (Alpine daha küçüktür)
+FROM node:20-alpine AS dependencies
+
+# Uygulama dizinini ayarlayalım
+WORKDIR /usr/src/app
+
+# Sadece package dosyalarını kopyala
+COPY package.json package-lock.json ./
+
+# Production bağımlılıklarını yükle (npm ci daha hızlı ve tutarlıdır)
+RUN npm ci --only=production
+
+# --- Aşama 2: Uygulamayı Build Etme ---
+FROM node:20-alpine AS builder
+
+WORKDIR /usr/src/app
+
+# Önceki aşamadaki production bağımlılıklarını kopyala
+COPY --from=dependencies /usr/src/app/node_modules ./node_modules
+# Tüm package dosyalarını tekrar kopyala (build için devDependencies gerekebilir)
+COPY package.json package-lock.json ./
+# Development bağımlılıklarını yükle
+RUN npm install --only=development
+
+# Uygulama kaynak kodunu ve build konfigürasyonunu kopyala
+COPY . .
+
+# Uygulamayı build et
+RUN npm run build
+
+# --- Aşama 3: Production İmajı ---
+FROM node:20-alpine AS production
+
+# Ortamı production olarak ayarla
+ENV NODE_ENV=production
+# API'nin çalışacağı port (main.ts içindekiyle aynı)
+ENV PORT=3000
+
+WORKDIR /usr/src/app
+
+# Önceki aşamadan production bağımlılıklarını kopyala
+COPY --from=dependencies /usr/src/app/node_modules ./node_modules
+# Build aşamasından derlenmiş kodu kopyala
+COPY --from=builder /usr/src/app/dist ./dist
+
+# Uygulamanın çalışacağı portu dışarıya aç
+EXPOSE ${PORT}
+
+# Uygulamayı başlatma komutu (API için main.js)
+CMD ["node", "dist/main.js"]

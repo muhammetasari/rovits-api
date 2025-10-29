@@ -1,0 +1,28 @@
+# --- Aşama 1: Bağımlılıkları Yükleme ---
+FROM node:20-alpine AS dependencies
+WORKDIR /usr/src/app
+COPY package.json package-lock.json ./
+RUN npm ci --only=production
+
+# --- Aşama 2: Uygulamayı Build Etme ---
+FROM node:20-alpine AS builder
+WORKDIR /usr/src/app
+COPY --from=dependencies /usr/src/app/node_modules ./node_modules
+COPY package.json package-lock.json ./
+RUN npm install --only=development
+COPY . .
+RUN npm run build
+
+# --- Aşama 3: Production İmajı ---
+FROM node:20-alpine AS production
+
+ENV NODE_ENV=production
+# Worker için port expose etmeye gerek yok
+
+WORKDIR /usr/src/app
+
+COPY --from=dependencies /usr/src/app/node_modules ./node_modules
+COPY --from=builder /usr/src/app/dist ./dist
+
+# Uygulamayı başlatma komutu (Worker için worker.js)
+CMD ["node", "dist/worker.js"]
