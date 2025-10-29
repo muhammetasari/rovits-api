@@ -4,7 +4,7 @@ import {
     NotFoundException,
     BadGatewayException,
     UnauthorizedException,
-    HttpException,
+    HttpException, // Bu importun olduğundan emin olun
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 
@@ -20,7 +20,8 @@ export class GooglePlacesService {
         }
     }
 
-    async getPlaceDetails(placeId: string) {
+    // Mevcut Metod: Yer Detaylarını Alma (Güncellenmiş FieldMask ile)
+    async getPlaceDetails(placeId: string): Promise<any> { // <--- Dönüş tipini daha spesifik yapabilirsiniz (örn: Place DTO)
         try {
             const url = `https://places.googleapis.com/v1/places/${placeId}`;
 
@@ -29,42 +30,39 @@ export class GooglePlacesService {
                 headers: {
                     'Content-Type': 'application/json',
                     'X-Goog-Api-Key': this.apiKey,
-                    'X-Goog-FieldMask': 'id,displayName,formattedAddress,location,rating,types,regularOpeningHours,currentOpeningHours,photos'
+                    // GÜNCELLENMİŞ: Tam kapsamlı FieldMask
+                    'X-Goog-FieldMask': 'id,displayName,formattedAddress,addressComponents,location,rating,userRatingCount,types,regularOpeningHours,currentOpeningHours,secondaryOpeningHours,photos,websiteUri,nationalPhoneNumber,businessStatus,googleMapsUri,reviews,editorialSummary,priceLevel,accessibilityOptions'
                 }
             });
 
             if (!response.ok) {
-                // YENİ: Gelişmiş Hata Yönetimi
                 const error = await response.json();
                 console.error('Google Places API Error (getPlaceDetails):', error);
 
                 if (response.status === 404) {
                     throw new NotFoundException(`Place not found with ID: ${placeId}`);
                 }
-                if (response.status === 403 || response.status === 401 || response.status === 400) { // 400 eklendi
-                    // Google API Key hatası (genellikle 400, 401 veya 403 döner)
+                // GÜNCELLENMİŞ: 400 durumunu da kontrol et (API Key hatası için)
+                if (response.status === 403 || response.status === 401 || response.status === 400) {
                     throw new UnauthorizedException('Failed to authenticate with Google Places API. Check API Key.');
                 }
-                // Diğer Google kaynaklı hatalar için
                 throw new BadGatewayException('Upstream Google Places API returned an error.');
             }
 
             return await response.json();
 
         } catch (error) {
-            // YENİ: Hata yakalama
-            // Eğer 'fetch'in kendisi (örn. ağ hatası) patlarsa veya
-            // bizim fırlattığımız bir HttpException ise tekrar fırlat.
             if (error instanceof HttpException) {
                 throw error;
             }
-
             console.error('Error in getPlaceDetails service:', error);
-            throw new InternalServerErrorException(error.message);
+            // Hata mesajını daha anlamlı hale getirelim
+            throw new InternalServerErrorException(error.message || `Failed to fetch details for placeId: ${placeId}`);
         }
     }
 
-    async searchPlace(query: string) {
+    // Mevcut Metod: Yer Arama (searchText)
+    async searchPlace(query: string): Promise<any> { // <--- Dönüş tipini daha spesifik yapabilirsiniz
         try {
             const url = 'https://places.googleapis.com/v1/places:searchText';
 
@@ -73,17 +71,18 @@ export class GooglePlacesService {
                 headers: {
                     'Content-Type': 'application/json',
                     'X-Goog-Api-Key': this.apiKey,
+                    // Bu metod için temel bilgiler yeterli
                     'X-Goog-FieldMask': 'places.id,places.displayName,places.formattedAddress'
                 },
                 body: JSON.stringify({ textQuery: query })
             });
 
-            // YENİ: 'searchPlace' için eksik olan response.ok kontrolü eklendi.
             if (!response.ok) {
                 const error = await response.json();
                 console.error('Google Places API Error (searchPlace):', error);
 
-                if (response.status === 403 || response.status === 401 || response.status === 400) { // 400 eklendi
+                // GÜNCELLENMİŞ: 400 durumunu da kontrol et (API Key hatası için)
+                if (response.status === 403 || response.status === 401 || response.status === 400) {
                     throw new UnauthorizedException('Failed to authenticate with Google Places API. Check API Key.');
                 }
                 throw new BadGatewayException('Upstream Google Search API returned an error.');
@@ -92,13 +91,80 @@ export class GooglePlacesService {
             return await response.json();
 
         } catch (error) {
-            // YENİ: Hata yakalama
             if (error instanceof HttpException) {
                 throw error;
             }
-
             console.error('Error in searchPlace service:', error);
-            throw new InternalServerErrorException(error.message);
+            throw new InternalServerErrorException(error.message || `Failed to search place with query: ${query}`);
+        }
+    }
+
+    // YENİ METOD: Keşif için searchNearby API'sini kullanır
+    async discoverPlaces(
+        latitude: number,
+        longitude: number,
+        radius: number,
+        includedTypes: string[],
+        pageToken?: string, // Sayfalama için token
+    ): Promise<{ places: { id: string, displayName: { text: string } }[], nextPageToken?: string }> {
+        try {
+            const url = 'https://places.googleapis.com/v1/places:searchNearby';
+            const body: any = {
+                includedTypes: includedTypes,
+                maxResultCount: 20, // Google max 20 döndürür
+                locationRestriction: {
+                    circle: {
+                        center: { latitude, longitude },
+                        radius: radius,
+                    },
+                },
+                rankPreference: 'PROMINENCE', // Popülerliğe göre sırala
+                languageCode: 'tr', // Türkçe isimleri tercih et
+            };
+
+            if (pageToken) {
+                body.pageToken = pageToken;
+            }
+
+            const response = await fetch(url, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-Goog-Api-Key': this.apiKey,
+                    // Sadece ID ve isim yeterli, detayları sonra alacağız
+                    'X-Goog-FieldMask': 'places.id,places.displayName',
+                },
+                body: JSON.stringify(body),
+            });
+
+            if (!response.ok) {
+                const error = await response.json();
+                console.error('Google Places API Error (discoverPlaces):', error);
+
+                // GÜNCELLENMİŞ: 400 durumunu da kontrol et (API Key hatası için)
+                if (response.status === 403 || response.status === 401 || response.status === 400) {
+                    // PageToken hatası için özel kontrol
+                    if (response.status === 400 && error?.error?.message?.includes('INVALID_ARGUMENT') && body.pageToken) {
+                        console.warn(`Invalid or expired pageToken: ${body.pageToken}, stopping pagination.`);
+                        return { places: [] }; // Boş sonuç döndürerek döngüyü durdur
+                    }
+                    throw new UnauthorizedException('Failed to authenticate with Google Places API (Nearby). Check API Key.');
+                }
+                throw new BadGatewayException('Upstream Google Nearby Search API returned an error.');
+            }
+
+            const result = await response.json();
+            return {
+                places: result.places || [], // places alanı boş gelebilir
+                nextPageToken: result.nextPageToken
+            };
+
+        } catch (error) {
+            if (error instanceof HttpException) {
+                throw error;
+            }
+            console.error('Error in discoverPlaces service:', error);
+            throw new InternalServerErrorException(error.message || 'Failed to discover places');
         }
     }
 }
