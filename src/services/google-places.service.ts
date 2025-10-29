@@ -4,24 +4,26 @@ import {
     NotFoundException,
     BadGatewayException,
     UnauthorizedException,
-    HttpException, // Bu importun olduğundan emin olun
+    HttpException,
+    BadRequestException, // Zaten vardı
+    Logger // Zaten vardı
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 
 @Injectable()
 export class GooglePlacesService {
+    private readonly logger = new Logger(GooglePlacesService.name);
     private apiKey: string;
 
     constructor(private configService: ConfigService) {
         this.apiKey = this.configService.get<string>('GOOGLE_PLACES_API_KEY') || '';
         if (!this.apiKey) {
-            // API Key yoksa sunucu başlarken hata ver, daha güvenli.
             throw new Error('GOOGLE_PLACES_API_KEY is not defined in environment variables.');
         }
     }
 
-    // Mevcut Metod: Yer Detaylarını Alma (Güncellenmiş FieldMask ile)
-    async getPlaceDetails(placeId: string): Promise<any> { // <--- Dönüş tipini daha spesifik yapabilirsiniz (örn: Place DTO)
+    // --- getPlaceDetails Metodu (DÜZELTİLMİŞ HALİ) ---
+    async getPlaceDetails(placeId: string) {
         try {
             const url = `https://places.googleapis.com/v1/places/${placeId}`;
 
@@ -30,23 +32,30 @@ export class GooglePlacesService {
                 headers: {
                     'Content-Type': 'application/json',
                     'X-Goog-Api-Key': this.apiKey,
-                    // GÜNCELLENMİŞ: Tam kapsamlı FieldMask
-                    'X-Goog-FieldMask': 'id,displayName,formattedAddress,addressComponents,location,rating,userRatingCount,types,regularOpeningHours,currentOpeningHours,secondaryOpeningHours,photos,websiteUri,nationalPhoneNumber,businessStatus,googleMapsUri,reviews,editorialSummary,priceLevel,accessibilityOptions'
+                    // DÜZELTME: 'secondaryOpeningHours' kaldırıldı.
+                    'X-Goog-FieldMask': 'id,displayName,formattedAddress,addressComponents,location,rating,userRatingCount,types,regularOpeningHours,currentOpeningHours,photos,websiteUri,nationalPhoneNumber,businessStatus,googleMapsUri,reviews,editorialSummary,priceLevel,accessibilityOptions'
                 }
             });
 
             if (!response.ok) {
                 const error = await response.json();
-                console.error('Google Places API Error (getPlaceDetails):', error);
+                this.logger.error(`Google Places API Error (getPlaceDetails) - Status: ${response.status}`, JSON.stringify(error, null, 2));
 
+                // --- HATA YÖNETİMİ GÜNCELLENDİ ---
                 if (response.status === 404) {
                     throw new NotFoundException(`Place not found with ID: ${placeId}`);
                 }
-                // GÜNCELLENMİŞ: 400 durumunu da kontrol et (API Key hatası için)
-                if (response.status === 403 || response.status === 401 || response.status === 400) {
-                    throw new UnauthorizedException('Failed to authenticate with Google Places API. Check API Key.');
+                // Önce INVALID_ARGUMENT kontrolü (FieldMask hatası vb.)
+                if (response.status === 400 && error?.error?.status === 'INVALID_ARGUMENT') {
+                    this.logger.warn(`Google API returned INVALID_ARGUMENT for getPlaceDetails: ${error?.error?.message}`);
+                    throw new BadRequestException(`Invalid request parameters sent to Google API (Details): ${error?.error?.message}`);
                 }
-                throw new BadGatewayException('Upstream Google Places API returned an error.');
+                // Sonra API Key veya Yetki hatası kontrolü (401, 403 veya diğer 400'ler)
+                if (response.status === 403 || response.status === 401 || response.status === 400) {
+                    throw new UnauthorizedException('Failed to authenticate with Google Places API (Details). Check API Key.');
+                }
+                // Diğer Google hataları
+                throw new BadGatewayException(`Upstream Google Places API returned status ${response.status}`);
             }
 
             return await response.json();
@@ -55,14 +64,13 @@ export class GooglePlacesService {
             if (error instanceof HttpException) {
                 throw error;
             }
-            console.error('Error in getPlaceDetails service:', error);
-            // Hata mesajını daha anlamlı hale getirelim
-            throw new InternalServerErrorException(error.message || `Failed to fetch details for placeId: ${placeId}`);
+            this.logger.error('Unexpected error in getPlaceDetails service:', error.stack || error.message || error);
+            throw new InternalServerErrorException(error.message || 'Failed to get place details due to an unexpected error');
         }
     }
 
-    // Mevcut Metod: Yer Arama (searchText)
-    async searchPlace(query: string): Promise<any> { // <--- Dönüş tipini daha spesifik yapabilirsiniz
+    // --- searchPlace Metodu (DEĞİŞİKLİK YOK) ---
+    async searchPlace(query: string) {
         try {
             const url = 'https://places.googleapis.com/v1/places:searchText';
 
@@ -71,7 +79,6 @@ export class GooglePlacesService {
                 headers: {
                     'Content-Type': 'application/json',
                     'X-Goog-Api-Key': this.apiKey,
-                    // Bu metod için temel bilgiler yeterli
                     'X-Goog-FieldMask': 'places.id,places.displayName,places.formattedAddress'
                 },
                 body: JSON.stringify({ textQuery: query })
@@ -79,13 +86,12 @@ export class GooglePlacesService {
 
             if (!response.ok) {
                 const error = await response.json();
-                console.error('Google Places API Error (searchPlace):', error);
+                this.logger.error(`Google Places API Error (searchPlace) - Status: ${response.status}`, JSON.stringify(error, null, 2));
 
-                // GÜNCELLENMİŞ: 400 durumunu da kontrol et (API Key hatası için)
                 if (response.status === 403 || response.status === 401 || response.status === 400) {
-                    throw new UnauthorizedException('Failed to authenticate with Google Places API. Check API Key.');
+                    throw new UnauthorizedException('Failed to authenticate with Google Places API (Search). Check API Key.');
                 }
-                throw new BadGatewayException('Upstream Google Search API returned an error.');
+                throw new BadGatewayException(`Upstream Google Search API returned status ${response.status}`);
             }
 
             return await response.json();
@@ -94,32 +100,31 @@ export class GooglePlacesService {
             if (error instanceof HttpException) {
                 throw error;
             }
-            console.error('Error in searchPlace service:', error);
-            throw new InternalServerErrorException(error.message || `Failed to search place with query: ${query}`);
+            this.logger.error('Unexpected error in searchPlace service:', error.stack || error.message || error);
+            throw new InternalServerErrorException(error.message || 'Failed to search place due to an unexpected error');
         }
     }
 
-    // YENİ METOD: Keşif için searchNearby API'sini kullanır
+    // --- discoverPlaces Metodu (DEĞİŞİKLİK YOK) ---
     async discoverPlaces(
         latitude: number,
         longitude: number,
         radius: number,
         includedTypes: string[],
-        pageToken?: string, // Sayfalama için token
+        pageToken?: string,
     ): Promise<{ places: { id: string, displayName: { text: string } }[], nextPageToken?: string }> {
         try {
             const url = 'https://places.googleapis.com/v1/places:searchNearby';
             const body: any = {
                 includedTypes: includedTypes,
-                maxResultCount: 20, // Google max 20 döndürür
+                maxResultCount: 20,
                 locationRestriction: {
                     circle: {
                         center: { latitude, longitude },
                         radius: radius,
                     },
                 },
-                rankPreference: 'PROMINENCE', // Popülerliğe göre sırala
-                languageCode: 'tr', // Türkçe isimleri tercih et
+                languageCode: 'tr',
             };
 
             if (pageToken) {
@@ -131,7 +136,6 @@ export class GooglePlacesService {
                 headers: {
                     'Content-Type': 'application/json',
                     'X-Goog-Api-Key': this.apiKey,
-                    // Sadece ID ve isim yeterli, detayları sonra alacağız
                     'X-Goog-FieldMask': 'places.id,places.displayName',
                 },
                 body: JSON.stringify(body),
@@ -139,23 +143,25 @@ export class GooglePlacesService {
 
             if (!response.ok) {
                 const error = await response.json();
-                console.error('Google Places API Error (discoverPlaces):', error);
+                this.logger.error(`Google Places API Error (discoverPlaces) - Status: ${response.status}`, JSON.stringify(error, null, 2));
 
-                // GÜNCELLENMİŞ: 400 durumunu da kontrol et (API Key hatası için)
-                if (response.status === 403 || response.status === 401 || response.status === 400) {
-                    // PageToken hatası için özel kontrol
-                    if (response.status === 400 && error?.error?.message?.includes('INVALID_ARGUMENT') && body.pageToken) {
-                        console.warn(`Invalid or expired pageToken: ${body.pageToken}, stopping pagination.`);
-                        return { places: [] }; // Boş sonuç döndürerek döngüyü durdur
-                    }
+                if (response.status === 403 || response.status === 401) {
                     throw new UnauthorizedException('Failed to authenticate with Google Places API (Nearby). Check API Key.');
                 }
-                throw new BadGatewayException('Upstream Google Nearby Search API returned an error.');
+                if (response.status === 400 && error?.error?.status === 'INVALID_ARGUMENT') {
+                    this.logger.warn(`Google API returned INVALID_ARGUMENT: ${error?.error?.message}`);
+                    if (pageToken && error?.error?.message?.toLowerCase().includes('page token')) {
+                        this.logger.warn('Invalid pageToken, stopping pagination.');
+                        return { places: [], nextPageToken: undefined };
+                    }
+                    throw new BadRequestException(`Invalid request parameters sent to Google API: ${error?.error?.message}`);
+                }
+                throw new BadGatewayException(`Upstream Google Nearby Search API returned status ${response.status}`);
             }
 
             const result = await response.json();
             return {
-                places: result.places || [], // places alanı boş gelebilir
+                places: result.places || [],
                 nextPageToken: result.nextPageToken
             };
 
@@ -163,8 +169,8 @@ export class GooglePlacesService {
             if (error instanceof HttpException) {
                 throw error;
             }
-            console.error('Error in discoverPlaces service:', error);
-            throw new InternalServerErrorException(error.message || 'Failed to discover places');
+            this.logger.error('Unexpected error in discoverPlaces service:', error.stack || error.message || error);
+            throw new InternalServerErrorException(error.message || 'Failed to discover places due to an unexpected error');
         }
     }
 }

@@ -2,9 +2,8 @@ import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { HydratedDocument, Schema as MongooseSchema } from 'mongoose';
 
 // Google API'den gelen karmaşık nesneler için alt şemalar/tipler
-// Bu, veriyi daha yapısal hale getirir ve TypeScript'te tip güvenliği sağlar.
 
-@Schema({ _id: false }) // Alt dökümanlar için _id oluşturma
+@Schema({ _id: false })
 class Location {
     @Prop({ type: Number })
     latitude: number;
@@ -16,7 +15,7 @@ class Location {
 @Schema({ _id: false })
 class OpeningHoursPeriodDetail {
     @Prop({ type: Number })
-    day: number; // 0=Pazar, 1=Pzt...
+    day: number;
 
     @Prop({ type: Number })
     hour: number;
@@ -24,8 +23,8 @@ class OpeningHoursPeriodDetail {
     @Prop({ type: Number })
     minute: number;
 
-    @Prop({ type: MongooseSchema.Types.Mixed }) // year, month, day gelebilir
-    date?: { year: number; month: number; day: number }; // currentOpeningHours'da var
+    @Prop({ type: MongooseSchema.Types.Mixed })
+    date?: { year: number; month: number; day: number };
 }
 
 @Schema({ _id: false })
@@ -40,7 +39,7 @@ class OpeningHoursPeriod {
 @Schema({ _id: false })
 class OpeningHours {
     @Prop({ type: Boolean })
-    openNow?: boolean; // currentOpeningHours'da var
+    openNow?: boolean;
 
     @Prop({ type: [OpeningHoursPeriod] })
     periods: OpeningHoursPeriod[];
@@ -48,8 +47,7 @@ class OpeningHours {
     @Prop({ type: [String] })
     weekdayDescriptions?: string[];
 
-    // secondaryOpeningHours için de geçerli olabilir
-    @Prop({ type: String }) // örn: "HOLIDAY"
+    @Prop({ type: String })
     type?: string;
 }
 
@@ -68,7 +66,7 @@ class PhotoAuthorAttribution {
 @Schema({ _id: false })
 class Photo {
     @Prop({ type: String })
-    name: string; // 'places/ChIJ.../photos/AWn5...' formatında
+    name: string;
 
     @Prop({ type: Number })
     widthPx: number;
@@ -83,13 +81,13 @@ class Photo {
 @Schema({ _id: false })
 class AddressComponent {
     @Prop({ type: String })
-    longText: string;
+    longText: string; // Google API'de longText -> longName olarak gelebilir, düzeltme gerekebilir
 
     @Prop({ type: String })
-    shortText: string;
+    shortText: string; // Google API'de shortText -> shortName olarak gelebilir
 
     @Prop({ type: [String] })
-    types: string[]; // ['locality', 'political'] gibi
+    types: string[];
 
     @Prop({ type: String })
     languageCode: string;
@@ -119,21 +117,21 @@ class ReviewOriginalText {
 @Schema({ _id: false })
 class Review {
     @Prop({ type: String })
-    name: string; // Yorumun unique ID'si
+    name: string;
 
-    @Prop({ type: String }) // "2023-10-29T12:00:00Z" gibi
+    @Prop({ type: String })
     relativePublishTimeDescription: string;
 
     @Prop({ type: Number })
-    rating: number; // Yorumun puanı (1-5)
+    rating: number;
 
     @Prop({ type: ReviewOriginalText })
-    originalText?: ReviewOriginalText; // Orijinal yorum metni
+    originalText?: ReviewOriginalText;
 
     @Prop({ type: ReviewAuthorAttribution })
     authorAttribution?: ReviewAuthorAttribution;
 
-    @Prop({ type: String }) // "2023-10-29T12:00:00Z" gibi
+    @Prop({ type: String })
     publishTime: string;
 }
 
@@ -154,8 +152,6 @@ class AccessibilityOptions {
 
     @Prop({ type: Boolean })
     wheelchairAccessibleParking?: boolean;
-
-    // Google API'den gelebilecek diğer erişilebilirlik alanları eklenebilir
 }
 
 @Schema({ _id: false })
@@ -168,11 +164,10 @@ class DisplayName {
 }
 
 // Ana Place Şeması
-@Schema({ collection: 'places', timestamps: true }) // 'places' koleksiyonuna kaydet, createdAt/updatedAt ekle
+@Schema({ collection: 'places', timestamps: true })
 export class Place {
-    // Google'ın Place ID'si bizim primary key'imiz olacak (_id yerine)
     @Prop({ type: String, unique: true, index: true, required: true })
-    id: string; // Google Place ID (örn: "ChIJ...")
+    id: string;
 
     @Prop({ type: DisplayName })
     displayName: DisplayName;
@@ -187,10 +182,10 @@ export class Place {
     location: Location;
 
     @Prop({ type: Number })
-    rating?: number; // Her yerin puanı olmayabilir
+    rating?: number;
 
     @Prop({ type: Number })
-    userRatingCount?: number; // Her yerin puan sayısı olmayabilir
+    userRatingCount?: number;
 
     @Prop({ type: [String] })
     types: string[];
@@ -199,10 +194,7 @@ export class Place {
     regularOpeningHours?: OpeningHours;
 
     @Prop({ type: OpeningHours })
-    currentOpeningHours?: OpeningHours; // Her zaman bulunmayabilir
-
-    @Prop({ type: [OpeningHours] }) // Birden fazla olabilir (örn: Bayram tatili vs)
-    secondaryOpeningHours?: OpeningHours[];
+    currentOpeningHours?: OpeningHours;
 
     @Prop({ type: [Photo] })
     photos?: Photo[];
@@ -214,19 +206,19 @@ export class Place {
     nationalPhoneNumber?: string;
 
     @Prop({ type: String })
-    businessStatus?: string; // örn: "OPERATIONAL"
+    businessStatus?: string;
 
     @Prop({ type: String })
     googleMapsUri?: string;
 
     @Prop({ type: [Review] })
-    reviews?: Review[]; // Google genellikle en fazla 5 yorum döndürür
+    reviews?: Review[];
 
     @Prop({ type: EditorialSummary })
     editorialSummary?: EditorialSummary;
 
-    @Prop({ type: Number })
-    priceLevel?: number; // 1-4 arası, her yer için geçerli değil
+    @Prop({ type: String })
+    priceLevel?: string;
 
     @Prop({ type: AccessibilityOptions })
     accessibilityOptions?: AccessibilityOptions;
@@ -235,3 +227,6 @@ export class Place {
 export type PlaceDocument = HydratedDocument<Place>;
 
 export const PlaceSchema = SchemaFactory.createForClass(Place);
+
+PlaceSchema.index({ location: '2dsphere' });
+PlaceSchema.index({ types: 1 });
