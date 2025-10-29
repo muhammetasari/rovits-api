@@ -11,6 +11,8 @@ import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { APP_GUARD } from '@nestjs/core';
 import { BullModule } from '@nestjs/bullmq';
 import { JobProcessorModule } from './job-processor/job-processor.module';
+import { HealthModule } from './health/health.module';
+import { MetricsModule } from './metrics/metrics.module';
 
 @Module({
     imports: [
@@ -49,6 +51,8 @@ import { JobProcessorModule } from './job-processor/job-processor.module';
 
         // --- JobProcessorModule'ü imports dizisine ekleyin ---
         JobProcessorModule,
+        HealthModule,
+        MetricsModule,
     ],
     controllers: [
         PlaceFinderController,
