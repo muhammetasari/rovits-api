@@ -1,32 +1,44 @@
-import { Controller, Post, Query, UseGuards, HttpCode, HttpStatus } from '@nestjs/common';
+import { Controller, Post, Body, UseGuards, HttpCode, HttpStatus, Logger, ValidationPipe } from '@nestjs/common';
 import { ApiKeyGuard } from '../guards/api-key.guard';
 import { DataSyncService } from '../services/data-sync.service';
-import { ExplorePlacesDto } from '../dto/explore-places.dto';
+import { IsInt, IsOptional, Max, Min } from 'class-validator';
 
-@Controller('admin') // Endpoint'ler /admin/... altında olacak
-@UseGuards(ApiKeyGuard) // Bu controller'daki tüm endpoint'ler ApiKeyGuard gerektirir
+// Sync işlemi için DTO (Body parametresi olarak)
+class SyncOptionsDto {
+    @IsOptional()
+    @IsInt()
+    @Min(10)
+    // --- GÜNCELLEME: Üst limit 1000 oldu ---
+    @Max(1000)
+        // --- GÜNCELLEME: Varsayılan değer 1000 oldu ---
+    maxResults?: number = 1000; // Varsayılan hedef sayı
+}
+
+@Controller('admin')
+@UseGuards(ApiKeyGuard)
 export class AdminController {
+    private readonly logger = new Logger(AdminController.name);
+
     constructor(private readonly dataSyncService: DataSyncService) {}
 
-    @Post('generate-list') // POST /admin/generate-list?latitude=41.01&longitude=28.97&radius=20000&maxResults=100
-    @HttpCode(HttpStatus.ACCEPTED) // Uzun sürebileceği için 202 Accepted döndür
-    async generateMustSeeList(@Query() query: ExplorePlacesDto) {
-        // İsteği hemen kabul et, işlemi arka planda başlat (asenkron)
-        // Gerçek bir production ortamında bu bir kuyruğa (queue) atılabilir,
-        // ancak şimdilik direkt servisi çağırıyoruz.
-        this.dataSyncService.updateMustSeePlaces(
-            query.latitude,
-            query.longitude,
-            query.radius,
-            query.maxResults,
-        )
-            .then(result => console.log('Data sync completed:', result))
-            .catch(error => console.error('Data sync failed:', error));
+    @Post('sync-places')
+    @HttpCode(HttpStatus.ACCEPTED)
+    async syncPlacesData(@Body(new ValidationPipe({ transform: true, whitelist: true })) options?: SyncOptionsDto) {
+        this.logger.log(`Manual trigger received for HYBRID sync-places with options: ${JSON.stringify(options)}`);
 
-        // Kullanıcıya işlemin başladığını bildir
+        // --- GÜNCELLEME: Varsayılan 1000 oldu ---
+        const maxResults = options?.maxResults ?? 1000;
+        // Location bias kısmı kaldırıldı, çünkü tüm İstanbul'u tarıyoruz
+        // Gerekirse DTO'ya geri eklenebilir.
+
+        // Arka planda çalıştır
+        this.dataSyncService.hybridSyncPlacesData(maxResults) // Sadece maxResults gönderiliyor
+            .then(result => this.logger.log(`Hybrid sync places process completed: ${JSON.stringify(result)}`))
+            .catch(error => this.logger.error(`Hybrid sync places process failed:`, error.stack || error.message));
+
         return {
-            message: `Place data generation started for lat=${query.latitude}, lon=${query.longitude}. Process runs in background.`,
-            parameters: query,
+            message: 'HYBRID Sync process (Nearby Search + Text Search) started. Process runs in background. Check server logs for details.',
+            optionsUsed: { maxResults }
         };
     }
 }
