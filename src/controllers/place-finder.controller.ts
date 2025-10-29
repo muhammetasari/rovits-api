@@ -20,8 +20,6 @@ export class PlaceFinderController {
             return { error: 'q parameter required' };
         }
 
-        // Not: Bu endpoint için de DTO (örn: SearchDto) kullanılabilir.
-        // Şimdilik orijinal halini koruyoruz.
         const result = await this.googlePlaces.searchPlace(query);
         return {
             query,
@@ -35,10 +33,6 @@ export class PlaceFinderController {
      * Toplu yer arama - Production API
      * URL: POST /place-finder/bulk-search
      * Body: { "queries": ["Yer1", "Yer2"] }
-     *
-     * GÜNCELLENDİ:
-     * 1. Performans: Promise.all ile paralelleştirildi.
-     * 2. Validasyon: @Body() artık BulkSearchDto kullanıyor.
      */
     @Post('bulk-search')
     async bulkSearch(@Body() body: BulkSearchDto) {
@@ -54,11 +48,6 @@ export class PlaceFinderController {
                     };
                 })
                 .catch(error => {
-                    // Servis katmanından HttpException gelirse (örn. 401 API Key Hatası)
-                    // Promise.all başarısız olur. Bu catch bloğu sadece
-                    // Google'dan 200 OK ama "yer bulunamadı" durumunu değil,
-                    // fırlatılan gerçek hataları da yönetebilmeli.
-                    // Şimdilik basit hata formatını koruyalım:
                     return {
                         query,
                         error: 'Not found or request failed'
@@ -73,11 +62,6 @@ export class PlaceFinderController {
     /**
      * Detaylı bilgi - Production API
      * URL: /place-finder/details?placeId=xxx veya ?name=Galata Tower
-     *
-     * GÜNCELLENDİ:
-     * 1. Hata Yönetimi: try...catch blokları kaldırıldı.
-     * Artık GooglePlacesService'ten fırlatılan (örn: NotFoundException)
-     * hatalar doğrudan NestJS tarafından yönetilecek (örn. 404).
      */
     @Get('details')
     async getDetails(

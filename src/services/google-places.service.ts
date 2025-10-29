@@ -15,6 +15,17 @@ export class GooglePlacesService {
     private readonly logger = new Logger(GooglePlacesService.name);
     private apiKey: string;
 
+    // --- FieldMasks for different API calls ---
+    // Comprehensive mask for getPlaceDetails (excluding secondaryOpeningHours)
+    private readonly DETAILS_FIELD_MASK = 'id,displayName,formattedAddress,addressComponents,location,rating,userRatingCount,types,regularOpeningHours,currentOpeningHours,photos,websiteUri,nationalPhoneNumber,businessStatus,googleMapsUri,reviews,editorialSummary,priceLevel,accessibilityOptions';
+    // Basic mask for specific place lookups using searchPlace
+    private readonly SEARCH_PLACE_FIELD_MASK = 'places.id,places.displayName,places.formattedAddress';
+    // Mask for Nearby Search discovery (cannot include nextPageToken)
+    private readonly NEARBY_DISCOVERY_FIELD_MASK = 'places.id,places.displayName,places.types';
+    // Mask for Text Search discovery (includes nextPageToken)
+    private readonly TEXT_DISCOVERY_FIELD_MASK = 'places.id,places.displayName,places.types,nextPageToken';
+    // --- ---
+
     constructor(private configService: ConfigService) {
         this.apiKey = this.configService.get<string>('GOOGLE_PLACES_API_KEY') || '';
         if (!this.apiKey) {
@@ -22,7 +33,6 @@ export class GooglePlacesService {
         }
     }
 
-    // getPlaceDetails metodu aynı kaldı
     async getPlaceDetails(placeId: string) {
         try {
             const url = `https://places.googleapis.com/v1/places/${placeId}`;
@@ -31,7 +41,7 @@ export class GooglePlacesService {
                 headers: {
                     'Content-Type': 'application/json',
                     'X-Goog-Api-Key': this.apiKey,
-                    'X-Goog-FieldMask': 'id,displayName,formattedAddress,addressComponents,location,rating,userRatingCount,types,regularOpeningHours,currentOpeningHours,photos,websiteUri,nationalPhoneNumber,businessStatus,googleMapsUri,reviews,editorialSummary,priceLevel,accessibilityOptions'
+                    'X-Goog-FieldMask': this.DETAILS_FIELD_MASK // Use constant
                 }
             });
             if (!response.ok) {
@@ -50,17 +60,42 @@ export class GooglePlacesService {
         }
     }
 
-    // searchPlace metodu aynı kaldı
     async searchPlace(query: string) {
         try {
             const url = 'https://places.googleapis.com/v1/places:searchText';
-            const response = await fetch(url, { method: 'POST', headers: { /*...*/ }, body: JSON.stringify({ textQuery: query }) });
-            if (!response.ok) { /* ... */ }
-            return await response.json();
-        } catch (error) { /* ... */ }
-    }
 
-    // --- discoverPlacesNearby Metodu (DÜZELTİLMİŞ HALİ) ---
+            const response = await fetch(url, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-Goog-Api-Key': this.apiKey,
+                    'X-Goog-FieldMask': this.SEARCH_PLACE_FIELD_MASK // Use constant
+                },
+                body: JSON.stringify({ textQuery: query })
+            });
+
+            if (!response.ok) {
+                const error = await response.json();
+                this.logger.error(`Google Places API Error (searchPlace) - Status: ${response.status}`, JSON.stringify(error, null, 2));
+                if (response.status === 403 || response.status === 401 || response.status === 400) {
+                    throw new UnauthorizedException('Failed to authenticate with Google Places API (Search). Check API Key.');
+                }
+                throw new BadGatewayException(`Upstream Google Search API returned status ${response.status}`);
+            }
+
+            // Return the full response which includes the 'places' array
+            return await response.json();
+
+        } catch (error) {
+            if (error instanceof HttpException) {
+                throw error;
+            }
+            this.logger.error('Unexpected error in searchPlace service:', error.stack || error.message || error);
+            throw new InternalServerErrorException(error.message || 'Failed to search place due to an unexpected error');
+        }
+    }
+    // --- ---
+
     async discoverPlacesNearby(
         latitude: number,
         longitude: number,
@@ -70,29 +105,15 @@ export class GooglePlacesService {
     ): Promise<{ places: { id: string, displayName?: { text: string }, types?: string[] }[], nextPageToken?: string }> {
         try {
             const url = 'https://places.googleapis.com/v1/places:searchNearby';
-            const body: any = {
-                includedTypes: includedTypes,
-                maxResultCount: 20,
-                locationRestriction: {
-                    circle: {
-                        center: { latitude, longitude },
-                        radius: radius,
-                    },
-                },
-                languageCode: 'tr',
-            };
-
-            if (pageToken) {
-                body.pageToken = pageToken;
-            }
+            const body: any = { /* ... */ };
+            if (pageToken) { body.pageToken = pageToken; }
 
             const response = await fetch(url, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                     'X-Goog-Api-Key': this.apiKey,
-                    // --- DÜZELTME: nextPageToken buradan kaldırıldı ---
-                    'X-Goog-FieldMask': 'places.id,places.displayName,places.types',
+                    'X-Goog-FieldMask': this.NEARBY_DISCOVERY_FIELD_MASK // Use constant
                 },
                 body: JSON.stringify(body),
             });
@@ -103,15 +124,13 @@ export class GooglePlacesService {
                 if (response.status === 403 || response.status === 401) { throw new UnauthorizedException('Failed to authenticate with Google Places API (Nearby). Check API Key.'); }
                 if (response.status === 400 && error?.error?.status === 'INVALID_ARGUMENT') {
                     this.logger.warn(`Google API returned INVALID_ARGUMENT (Nearby): ${error?.error?.message}`);
-                    // FieldMask hatası genellikle pageToken ile ilgili olmaz, direkt hata fırlatabiliriz
+                    // Handle potential (though unlikely) page token error for Nearby
+                    if (pageToken && error?.error?.message?.toLowerCase().includes('page token')) { return { places: [], nextPageToken: undefined }; }
                     throw new BadRequestException(`Invalid request parameters sent to Google API (Nearby): ${error?.error?.message}`);
-                    // Eğer pageToken ile ilgiliyse (nadiren):
-                    // if (pageToken && error?.error?.message?.toLowerCase().includes('page token')) { return { places: [], nextPageToken: undefined }; }
                 }
                 throw new BadGatewayException(`Upstream Google Nearby Search API returned status ${response.status}`);
             }
             const result = await response.json();
-            // nextPageToken yanıtın kök seviyesinde gelir
             return { places: result.places || [], nextPageToken: result.nextPageToken };
         } catch (error) {
             if (error instanceof HttpException) { throw error; }
@@ -121,7 +140,6 @@ export class GooglePlacesService {
     }
 
 
-    // discoverPlacesByText metodu aynı kaldı
     async discoverPlacesByText(
         textQuery: string,
         latitude?: number,
@@ -131,9 +149,9 @@ export class GooglePlacesService {
     ): Promise<{ places: { id: string, displayName?: { text: string }, types?: string[] }[], nextPageToken?: string }> {
         try {
             const url = 'https://places.googleapis.com/v1/places:searchText';
-            const body: any = { textQuery: textQuery, maxResultCount: 20, languageCode: 'tr' };
+            const body: any = { /* ... */ };
             if (latitude !== undefined && longitude !== undefined && radius !== undefined) {
-                body.locationBias = { circle: { center: { latitude, longitude }, radius: radius } };
+                body.locationBias = { /* ... */ };
             }
             if (pageToken) { body.pageToken = pageToken; }
 
@@ -142,7 +160,7 @@ export class GooglePlacesService {
                 headers: {
                     'Content-Type': 'application/json',
                     'X-Goog-Api-Key': this.apiKey,
-                    'X-Goog-FieldMask': 'places.id,places.displayName,places.types,nextPageToken', // TextSearch nextPageToken'ı destekliyor
+                    'X-Goog-FieldMask': this.TEXT_DISCOVERY_FIELD_MASK // Use constant
                 },
                 body: JSON.stringify(body),
             });
