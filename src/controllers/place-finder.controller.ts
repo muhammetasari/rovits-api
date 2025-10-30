@@ -1,23 +1,37 @@
-import { Controller, Get, Post, Query, Body } from '@nestjs/common';
+import { Controller, Get, Post, Query, Body, HttpCode, HttpStatus, BadRequestException } from '@nestjs/common';
 import { GooglePlacesService } from '../services/google-places.service';
-import { BulkSearchDto } from '../dto/bulk-search.dto'; // DTO import edildi
+import { BulkSearchDto } from '../dto/bulk-search.dto';
+import { ApiTags, ApiOperation, ApiResponse, ApiQuery, ApiBody } from '@nestjs/swagger';
 
+@ApiTags('PlaceFinder')
 @Controller('place-finder')
 export class PlaceFinderController {
     constructor(private googlePlaces: GooglePlacesService) {}
 
-    // ========================================
-    // PRODUCTION ENDPOINTS
-    // ========================================
-
-    /**
-     * Tekli yer arama - Production API
-     * URL: /place-finder/search?q=Galata Tower
-     */
     @Get('search')
+    @ApiOperation({
+        summary: 'Single Place Search',
+        description: 'Performs a simple text search and returns the top matching place (simplified response).'
+    })
+    @ApiQuery({ name: 'q', description: 'The search query (e.g., "Galata Tower")', type: String, required: true })
+    @ApiResponse({
+        status: HttpStatus.OK,
+        description: 'Top search result found.',
+        schema: {
+            example: {
+                query: 'Galata Tower',
+                placeId: 'ChIJ...',
+                name: 'Galata Tower',
+                address: 'Bereketzade, Galata Kulesi, 34421 Beyoğlu/İstanbul, Türkiye'
+            }
+        }
+    })
+    @ApiResponse({ status: HttpStatus.BAD_REQUEST, description: 'Query parameter "q" is missing.' })
+    @ApiResponse({ status: HttpStatus.NOT_FOUND, description: 'Handled by Rfc7807Filter if GoogleAPI throws 404.' })
+    @ApiResponse({ status: HttpStatus.UNAUTHORIZED, description: 'Handled by Rfc7807Filter if GoogleAPI key is invalid.' })
     async search(@Query('q') query: string) {
         if (!query) {
-            return { error: 'q parameter required' };
+            throw new BadRequestException('q parameter required');
         }
 
         const result = await this.googlePlaces.searchPlace(query);
@@ -29,12 +43,32 @@ export class PlaceFinderController {
         };
     }
 
-    /**
-     * Toplu yer arama - Production API
-     * URL: POST /place-finder/bulk-search
-     * Body: { "queries": ["Yer1", "Yer2"] }
-     */
     @Post('bulk-search')
+    @HttpCode(HttpStatus.OK)
+    @ApiOperation({
+        summary: 'Bulk Place Search',
+        description: 'Performs multiple text searches in parallel (simplified response).'
+    })
+    @ApiBody({ type: BulkSearchDto })
+    @ApiResponse({
+        status: HttpStatus.OK,
+        description: 'Array of search results, one for each query.',
+        schema: {
+            example: [
+                {
+                    query: 'Galata Tower',
+                    placeId: 'ChIJ...',
+                    name: 'Galata Tower',
+                    address: '...'
+                },
+                {
+                    query: 'InvalidQueryString',
+                    error: 'Not found or request failed'
+                }
+            ]
+        }
+    })
+    @ApiResponse({ status: HttpStatus.BAD_REQUEST, description: 'Invalid request body (e.g., empty array or short strings).' })
     async bulkSearch(@Body() body: BulkSearchDto) {
 
         const searchPromises = body.queries.map(query => {
@@ -59,34 +93,30 @@ export class PlaceFinderController {
         return results;
     }
 
-    /**
-     * Detaylı bilgi - Production API
-     * URL: /place-finder/details?placeId=xxx veya ?name=Galata Tower
-     */
     @Get('details')
+    @ApiOperation({
+        summary: 'Get Full Place Details',
+        description: 'Retrieves comprehensive details for a place using either its Google Place ID or by searching its name.'
+    })
+    @ApiQuery({ name: 'placeId', description: 'Google Place ID (e.g., "ChIJ...")', type: String, required: false })
+    @ApiQuery({ name: 'name', description: 'Name of the place to search for (used if placeId is not provided)', type: String, required: false })
+    @ApiResponse({ status: HttpStatus.OK, description: 'Full place details.' })
+    @ApiResponse({ status: HttpStatus.BAD_REQUEST, description: 'Missing both placeId and name parameters.' })
+    @ApiResponse({ status: HttpStatus.NOT_FOUND, description: 'Place not found (Handled by Rfc7807Filter).' })
     async getDetails(
         @Query('placeId') placeId?: string,
         @Query('name') name?: string
     ) {
-        // Öncelik: placeId varsa direkt kullan
         if (placeId) {
-            // try...catch kaldırıldı.
             return await this.googlePlaces.getPlaceDetails(placeId);
         }
 
-        // placeId yoksa ama name varsa, önce ara sonra detay çek
         if (name) {
-            // try...catch kaldırıldı.
             const searchResult = await this.googlePlaces.searchPlace(name);
             const foundPlaceId = searchResult.places?.[0]?.id;
 
             if (!foundPlaceId) {
-                // Burada 404 fırlatmak daha doğru olurdu,
-                // ancak orijinal hatayı koruyoruz:
-                return {
-                    error: 'No place found with provided name',
-                    searchedName: name
-                };
+                throw new BadRequestException(`No place found with provided name: ${name}`);
             }
 
             const details = await this.googlePlaces.getPlaceDetails(foundPlaceId);
@@ -100,100 +130,95 @@ export class PlaceFinderController {
             };
         }
 
-        return {
-            error: 'placeId or name parameter required',
-            usage: {
-                byPlaceId: '/place-finder/details?placeId=ChIJ...',
-                byName: '/place-finder/details?name=Galata Tower'
-            }
-        };
+        throw new BadRequestException('placeId or name parameter required');
     }
 
-    // ========================================
-    // DEBUG/TEST ENDPOINTS
-    // ========================================
-
-    /**
-     * Ham Google arama sonucu - Debug/Test
-     * URL: /place-finder/debug/search?q=Galata Tower
-     */
     @Get('debug/search')
+    @ApiOperation({
+        summary: '[Debug] Raw Search',
+        description: 'Returns the raw, unfiltered response from the Google Places Text Search API. (Internal/Debug Use Only)'
+    })
+    @ApiQuery({ name: 'q', description: 'The search query', type: String, required: true })
+    @ApiResponse({ status: HttpStatus.OK, description: 'Raw Google API response.' })
     async debugSearch(@Query('q') query: string) {
         if (!query) {
-            return { error: 'q parameter required' };
+            throw new BadRequestException('q parameter required');
         }
-        // Not: try...catch burada da kaldırılmalı
         return await this.googlePlaces.searchPlace(query);
     }
 
-    /**
-     * Ham Google detay sonucu - Debug/Test
-     * URL: /place-finder/debug/details?placeId=xxx
-     */
     @Get('debug/details')
+    @ApiOperation({
+        summary: '[Debug] Raw Details',
+        description: 'Returns the raw, unfiltered response from the Google Places Details API. (Internal/Debug Use Only)'
+    })
+    @ApiQuery({ name: 'placeId', description: 'Google Place ID', type: String, required: true })
+    @ApiResponse({ status: HttpStatus.OK, description: 'Raw Google API response.' })
     async debugDetails(@Query('placeId') placeId: string) {
         if (!placeId) {
-            return { error: 'placeId parameter required' };
+            throw new BadRequestException('placeId parameter required');
         }
-        // Not: try...catch burada da kaldırılmalı
         return await this.googlePlaces.getPlaceDetails(placeId);
     }
 
-    // ========================================
-    // UTILITY ENDPOINTS
-    // ========================================
-
-    /**
-     * API durumu ve endpoint listesi
-     * URL: /place-finder/info
-     */
     @Get('info')
+    @ApiOperation({
+        summary: 'API Information',
+        description: 'Provides metadata about the API and its available endpoints.'
+    })
+    @ApiResponse({ status: HttpStatus.OK, description: 'API info object.' })
     async getInfo() {
         return {
             service: 'Rovits Place Finder API',
-            version: '1.0.0',
+            version: '1.0.0 (PR-004 Integrated)',
+            swaggerDocs: '/docs',
             endpoints: {
                 production: {
                     search: {
                         method: 'GET',
-                        url: '/place-finder/search?q={query}',
+                        url: '/api/v1/place-finder/search?q={query}',
                         description: 'Tekli yer arama (filtrelenmiş sonuç)',
-                        example: '/place-finder/search?q=Galata Tower'
+                        example: '/api/v1/place-finder/search?q=Galata Tower'
                     },
                     bulkSearch: {
                         method: 'POST',
-                        url: '/place-finder/bulk-search',
+                        url: '/api/v1/place-finder/bulk-search',
                         description: 'Toplu yer arama (Validasyon Aktif)',
                         body: { queries: ['Yer1', 'Yer2'] }
                     },
                     details: {
                         method: 'GET',
-                        url: '/place-finder/details?placeId={id} veya ?name={name}',
+                        url: '/api/v1/place-finder/details?placeId={id} veya ?name={name}',
                         description: 'Detaylı bilgi (Hata Yönetimi Aktif)',
                         examples: [
-                            '/place-finder/details?placeId=ChIJ...',
-                            '/place-finder/details?name=Galata Tower'
+                            '/api/v1/place-finder/details?placeId=ChIJ...',
+                            '/api/v1/place-finder/details?name=Galata Tower'
                         ]
                     }
                 },
                 debug: {
                     debugSearch: {
                         method: 'GET',
-                        url: '/place-finder/debug/search?q={query}',
+                        url: '/api/v1/place-finder/debug/search?q={query}',
                         description: 'Ham Google arama sonucu'
                     },
                     debugDetails: {
                         method: 'GET',
-                        url: '/place-finder/debug/details?placeId={id}',
+                        url: '/api/v1/place-finder/debug/details?placeId={id}',
                         description: 'Ham Google detay sonucu'
                     }
                 },
-                utility: {
-                    info: {
-                        method: 'GET',
-                        url: '/place-finder/info',
-                        description: 'API bilgileri ve endpoint listesi'
+                admin: {
+                    syncPlaces: {
+                        method: 'POST',
+                        url: '/api/v1/admin/sync-places',
+                        description: 'Veritabanı senkronizasyon işini tetikler (ApiKey Gerekli)'
                     }
+                },
+                observability: {
+                    live: { method: 'GET', url: '/live' },
+                    ready: { method: 'GET', url: '/ready' },
+                    metrics: { method: 'GET', url: '/metrics' },
                 }
             }
         };

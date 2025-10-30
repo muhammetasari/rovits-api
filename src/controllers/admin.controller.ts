@@ -13,9 +13,16 @@ import { ApiKeyGuard } from '../guards/api-key.guard';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import { IsInt, IsOptional, Max, Min } from 'class-validator';
+import { ApiTags, ApiOperation, ApiResponse, ApiBody, ApiProperty, ApiSecurity } from '@nestjs/swagger';
 
-// DTO for sync options (received in request body)
 class SyncOptionsDto {
+    @ApiProperty({
+        description: 'Target maximum number of results for the sync job.',
+        minimum: 10,
+        maximum: 1000,
+        default: 1000,
+        required: false,
+    })
     @IsOptional()
     @IsInt()
     @Min(10)
@@ -23,12 +30,13 @@ class SyncOptionsDto {
     maxResults?: number = 1000;
 }
 
-// --- İş (Job) Verisi İçin Interface (Opsiyonel ama önerilir) ---
 interface SyncPlacesJobData {
     maxResults: number;
 }
 
 
+@ApiTags('Admin')
+@ApiSecurity('ApiKeyAuth')
 @Controller('admin')
 @UseGuards(ApiKeyGuard)
 export class AdminController {
@@ -40,12 +48,29 @@ export class AdminController {
 
     @Post('sync-places')
     @HttpCode(HttpStatus.ACCEPTED)
+    @ApiOperation({
+        summary: 'Trigger Background Sync Job',
+        description: 'Queues a background job (BullMQ) to perform a hybrid data sync from Google Places API to the local database.'
+    })
+    @ApiBody({ type: SyncOptionsDto, required: false })
+    @ApiResponse({
+        status: HttpStatus.ACCEPTED,
+        description: 'The sync job has been successfully queued.',
+        schema: {
+            example: {
+                message: 'Sync process has been successfully queued. It will run in the background.',
+                jobId: '123',
+                optionsUsed: { maxResults: 1000 }
+            }
+        }
+    })
+    @ApiResponse({ status: HttpStatus.UNAUTHORIZED, description: 'Invalid or missing API Key.' })
+    @ApiResponse({ status: HttpStatus.INTERNAL_SERVER_ERROR, description: 'Failed to queue the job.' })
     async syncPlacesData(@Body(new ValidationPipe({ transform: true, whitelist: true })) options?: SyncOptionsDto) {
         this.logger.log(`Received request to queue HYBRID sync-places job with options: ${JSON.stringify(options)}`);
 
         const maxResults = options?.maxResults ?? 1000;
 
-        // --- İşi Kuyruğa Ekleme ---
         try {
             const job = await this.syncQueue.add('sync-places-job', { maxResults });
 
@@ -58,7 +83,6 @@ export class AdminController {
             };
         } catch (error) {
             this.logger.error(`Failed to add job to syncQueue:`, error.stack || error.message);
-            // Artık import edildiği için bu satır hata vermeyecek
             throw new InternalServerErrorException('Failed to queue the sync process.');
         }
     }

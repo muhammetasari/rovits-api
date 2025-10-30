@@ -1,16 +1,30 @@
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe, VersioningType } from '@nestjs/common';
 import { AppModule } from './app.module';
-// eslint-disable-next-line @typescript-eslint/no-var-requires
-const helmet = require('helmet');
+import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
+import { Rfc7807Filter } from './common/filters/rfc7807.filter';
+import helmet from 'helmet';
 
 async function bootstrap() {
     const app = await NestFactory.create(AppModule);
 
-    // Güvenlik başlıkları
-    app.use(helmet());
+    app.use(
+        helmet({
+            contentSecurityPolicy: {
+                directives: {
+                    defaultSrc: [`'self'`],
+                    scriptSrc: [`'self'`, `'unsafe-inline'`],
+                    styleSrc: [`'self'`, `'unsafe-inline'`],
+                    imgSrc: [`'self'`, `data:`],
+                    connectSrc: [`'self'`],
+                    fontSrc: [`'self'`],
+                    objectSrc: [`'none'`],
+                    frameAncestors: [`'none'`],
+                },
+            },
+        }),
+    );
 
-    // CORS
     app.enableCors({
         origin: process.env.CORS_ORIGINS?.split(',') ?? '*',
         methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
@@ -19,7 +33,6 @@ async function bootstrap() {
         exposedHeaders: ['Retry-After', 'RateLimit-Remaining'],
     });
 
-    // Validasyon
     app.useGlobalPipes(
         new ValidationPipe({
             whitelist: true,
@@ -30,22 +43,36 @@ async function bootstrap() {
         }),
     );
 
-    // Versiyonlama
     app.enableVersioning({
         type: VersioningType.URI,
         defaultVersion: '1',
     });
 
-    // Global prefix, fakat health/metrics hariç
     app.setGlobalPrefix('api', {
-        exclude: ['metrics', 'live', 'ready'],
+        exclude: ['metrics', 'live', 'ready', 'docs'],
     });
 
-    // RFC7807 hata filtresi
-    const { Rfc7807Filter } = await import('./common/filters/rfc7807.filter');
     app.useGlobalFilters(new Rfc7807Filter());
 
-    // Graceful shutdown
+    const config = new DocumentBuilder()
+        .setTitle('Rovits API')
+        .setDescription('Rovits Place Finder API - Google Places Integration')
+        .setVersion('1.0')
+        .addTag('PlaceFinder', 'Endpoints for searching and retrieving place data')
+        .addTag('Admin', 'Internal administrative endpoints')
+        .addApiKey(
+            { type: 'apiKey', name: 'x-api-key', in: 'header' },
+            'ApiKeyAuth',
+        )
+        .build();
+
+    const document = SwaggerModule.createDocument(app, config);
+    SwaggerModule.setup('docs', app, document, {
+        swaggerOptions: {
+            persistAuthorization: true,
+        },
+    });
+
     app.enableShutdownHooks();
 
     const port = Number(process.env.PORT ?? 3000);
