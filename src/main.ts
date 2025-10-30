@@ -4,9 +4,18 @@ import { AppModule } from './app.module';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { Rfc7807Filter } from './common/filters/rfc7807.filter';
 import helmet from 'helmet';
+import { ConfigService } from '@nestjs/config';
+import { Logger as PinoLogger } from 'nestjs-pino';
 
 async function bootstrap() {
-    const app = await NestFactory.create(AppModule);
+    const app = await NestFactory.create(AppModule, {
+        bufferLogs: true,
+    });
+
+    const configService = app.get(ConfigService);
+    const pinoLogger = app.get(PinoLogger);
+
+    app.useLogger(pinoLogger);
 
     app.use(
         helmet({
@@ -26,11 +35,11 @@ async function bootstrap() {
     );
 
     app.enableCors({
-        origin: process.env.CORS_ORIGINS?.split(',') ?? '*',
+        origin: configService.get<string>('CORS_ORIGINS')?.split(',') ?? '*',
         methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
         credentials: true,
-        allowedHeaders: ['Content-Type', 'Authorization', 'Idempotency-Key'],
-        exposedHeaders: ['Retry-After', 'RateLimit-Remaining'],
+        allowedHeaders: ['Content-Type', 'Authorization', 'Idempotency-Key', 'X-Correlation-ID'],
+        exposedHeaders: ['Retry-After', 'RateLimit-Remaining', 'X-Correlation-ID'],
     });
 
     app.useGlobalPipes(
@@ -75,7 +84,9 @@ async function bootstrap() {
 
     app.enableShutdownHooks();
 
-    const port = Number(process.env.PORT ?? 3000);
+    const port = configService.get<number>('PORT', 3000);
     await app.listen(port);
+
+    pinoLogger.log(`API application started on port ${port}`);
 }
 bootstrap();

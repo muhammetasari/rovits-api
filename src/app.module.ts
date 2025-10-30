@@ -13,10 +13,47 @@ import { BullModule } from '@nestjs/bullmq';
 import { JobProcessorModule } from './job-processor/job-processor.module';
 import { HealthModule } from './health/health.module';
 import { MetricsModule } from './metrics/metrics.module';
+import { LoggerModule } from 'nestjs-pino';
+import { validationSchema } from './config/validation.schema';
+import * as crypto from 'crypto';
 
 @Module({
     imports: [
-        ConfigModule.forRoot({ isGlobal: true }),
+        ConfigModule.forRoot({
+            isGlobal: true,
+            validationSchema: validationSchema,
+            ignoreEnvFile: process.env.NODE_ENV === 'production',
+        }),
+        LoggerModule.forRootAsync({
+            imports: [ConfigModule],
+            inject: [ConfigService],
+            useFactory: async (configService: ConfigService) => ({
+                pinoHttp: {
+                    level: configService.get<string>('LOG_LEVEL', 'info'),
+                    transport:
+                        configService.get<string>('NODE_ENV') !== 'production'
+                            ? {
+                                target: 'pino-pretty',
+                                options: {
+                                    singleLine: true,
+                                    colorize: true,
+                                    levelFirst: true,
+                                    translateTime: 'SYS:HH:MM:ss.l',
+                                },
+                            }
+                            : undefined,
+                    autoLogging: true,
+                    quietReqLogger: true,
+                    genReqId: (req, res) => {
+                        const existingId = (req as any).id ?? req.headers['x-correlation-id'];
+                        if (existingId) return existingId;
+                        const id = crypto.randomUUID();
+                        res.setHeader('X-Correlation-ID', id);
+                        return id;
+                    },
+                },
+            }),
+        }),
         ThrottlerModule.forRoot([{
             ttl: 60000,
             limit: 60,
@@ -25,18 +62,16 @@ import { MetricsModule } from './metrics/metrics.module';
             imports: [ConfigModule],
             useFactory: async (configService: ConfigService) => ({
                 connection: {
-                    host: configService.get<string>('REDIS_HOST', 'localhost'),
-                    port: configService.get<number>('REDIS_PORT', 6379),
-                    // password: configService.get<string>('REDIS_PASSWORD'),
+                    host: configService.get<string>('REDIS_HOST'),
+                    port: configService.get<number>('REDIS_PORT'),
+                    password: configService.get<string>('REDIS_PASSWORD'),
                 },
             }),
             inject: [ConfigService],
         }),
-        // --- Kuyruğu AppModule'de Tekrar Kaydet ---
         BullModule.registerQueue({
             name: 'syncQueue',
         }),
-        // --- Mongoose Yapılandırması ---
         MongooseModule.forRootAsync({
             imports: [ConfigModule],
             useFactory: async (configService: ConfigService) => ({
@@ -48,8 +83,6 @@ import { MetricsModule } from './metrics/metrics.module';
             inject: [ConfigService],
         }),
         MongooseModule.forFeature([{ name: Place.name, schema: PlaceSchema }]),
-
-        // --- JobProcessorModule'ü imports dizisine ekleyin ---
         JobProcessorModule,
         HealthModule,
         MetricsModule,
