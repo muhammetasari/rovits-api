@@ -45,19 +45,23 @@ import * as crypto from 'crypto';
                     autoLogging: true,
                     quietReqLogger: true,
                     genReqId: (req, res) => {
-                        const existingId = (req as any).id ?? req.headers['x-correlation-id'];
-                        if (existingId) return existingId;
-                        const id = crypto.randomUUID();
-                        res.setHeader('X-Correlation-ID', id);
+                        const existingId =
+                            (req as any).id ?? req.headers['x-correlation-id'];
+                        const id = existingId ?? crypto.randomUUID();
+                        if (res && res.setHeader) {
+                            res.setHeader('X-Correlation-ID', id);
+                        }
                         return id;
                     },
                 },
             }),
         }),
-        ThrottlerModule.forRoot([{
-            ttl: 60000,
-            limit: 60,
-        }]),
+        ThrottlerModule.forRoot([
+            {
+                ttl: 60000,
+                limit: 60,
+            },
+        ]),
         BullModule.forRootAsync({
             imports: [ConfigModule],
             useFactory: async (configService: ConfigService) => ({
@@ -87,10 +91,7 @@ import * as crypto from 'crypto';
         HealthModule,
         MetricsModule,
     ],
-    controllers: [
-        PlaceFinderController,
-        AdminController,
-    ],
+    controllers: [PlaceFinderController, AdminController],
     providers: [
         GooglePlacesService,
         ApiKeyGuard,
