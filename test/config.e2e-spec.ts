@@ -2,45 +2,51 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { validationSchema } from '../src/config/validation.schema';
+import { fail } from '@jest/globals';
 
 describe('ConfigModule Integration (e2e)', () => {
     let app: INestApplication;
     let configService: ConfigService;
 
+    let originalEnv: NodeJS.ProcessEnv;
+
+    beforeAll(async () => {
+        originalEnv = { ...process.env };
+
+        process.env.PORT = '3000';
+        process.env.CORS_ORIGINS = 'http://localhost:3001';
+        process.env.NODE_ENV = 'test';
+        process.env.LOG_LEVEL = 'info';
+        process.env.INTERNAL_API_KEY = 'test-internal-key-min-32-chars-long';
+        process.env.GOOGLE_PLACES_API_KEY = 'test-google-key';
+        process.env.DATABASE_URL = 'mongodb://localhost:27017/test';
+        process.env.REDIS_HOST = 'localhost';
+        process.env.REDIS_PORT = '6379';
+
+        const moduleFixture: TestingModule = await Test.createTestingModule({
+            imports: [
+                ConfigModule.forRoot({
+                    validationSchema,
+                    validationOptions: {
+                        abortEarly: false,
+                    },
+                }),
+            ],
+        }).compile();
+
+        app = moduleFixture.createNestApplication();
+        app.useGlobalPipes(new ValidationPipe());
+        await app.init();
+
+        configService = app.get<ConfigService>(ConfigService);
+    });
+
+    afterAll(async () => {
+        await app.close();
+        process.env = originalEnv;
+    });
+
     describe('Valid Configuration', () => {
-        beforeAll(async () => {
-            process.env.PORT = '3000';
-            process.env.CORS_ORIGINS = 'http://localhost:3001';
-            process.env.NODE_ENV = 'test';
-            process.env.LOG_LEVEL = 'info';
-            process.env.INTERNAL_API_KEY = 'test-internal-key-min-32-chars-long';
-            process.env.GOOGLE_PLACES_API_KEY = 'test-google-key';
-            process.env.DATABASE_URL = 'mongodb://localhost:27017/test';
-            process.env.REDIS_HOST = 'localhost';
-            process.env.REDIS_PORT = '6379';
-
-            const moduleFixture: TestingModule = await Test.createTestingModule({
-                imports: [
-                    ConfigModule.forRoot({
-                        validationSchema,
-                        validationOptions: {
-                            abortEarly: false,
-                        },
-                    }),
-                ],
-            }).compile();
-
-            app = moduleFixture.createNestApplication();
-            app.useGlobalPipes(new ValidationPipe());
-            await app.init();
-
-            configService = app.get<ConfigService>(ConfigService);
-        });
-
-        afterAll(async () => {
-            await app.close();
-        });
-
         it('should load PORT from environment', () => {
             expect(configService.get<number>('PORT')).toBe(3000);
         });
