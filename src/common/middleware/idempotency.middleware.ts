@@ -43,7 +43,7 @@ export class IdempotencyMiddleware implements NestMiddleware {
             const originalJson = res.json.bind(res);
             const originalSend = res.send.bind(res);
 
-            res.send = (body: any) => {
+            res.send = (body: any): Response => {
                 const responseData = {
                     status: res.statusCode,
                     body: body,
@@ -51,13 +51,13 @@ export class IdempotencyMiddleware implements NestMiddleware {
 
                 if (res.statusCode >= 200 && res.statusCode < 300) {
                     this.redis.set(redisKey, JSON.stringify(responseData), 'EX', this.ttl)
-                        .catch(err => this.logger.error('Failed to cache idempotency response', err));
+                        .catch(err => this.logger.error('Failed to cache idempotency response (send)', err));
                 }
 
                 return originalSend(body);
             };
 
-            res.json = (body: any) => {
+            res.json = (body: any): Response => {
                 const responseData = {
                     status: res.statusCode,
                     body: body,
@@ -65,7 +65,7 @@ export class IdempotencyMiddleware implements NestMiddleware {
 
                 if (res.statusCode >= 200 && res.statusCode < 300) {
                     this.redis.set(redisKey, JSON.stringify(responseData), 'EX', this.ttl)
-                        .catch(err => this.logger.error('Failed to cache idempotency response', err));
+                        .catch(err => this.logger.error('Failed to cache idempotency response (json)', err));
                 }
 
                 return originalJson(body);

@@ -17,7 +17,6 @@ export const redisProvider: FactoryProvider<Redis> = {
             password: configService.get<string>('REDIS_PASSWORD'),
             maxRetriesPerRequest: 3,
             enableReadyCheck: true,
-            lazyConnect: true,
         });
 
         client.on('connect', () => logger.log('Idempotency Redis client connected.'));

@@ -7,6 +7,8 @@ import helmet from 'helmet';
 import { ConfigService } from '@nestjs/config';
 import { Logger as PinoLogger } from 'nestjs-pino';
 import * as bodyParser from 'body-parser';
+import { REDIS_CLIENT } from './redis/redis.provider';
+import { Redis } from 'ioredis';
 
 async function bootstrap() {
     const app = await NestFactory.create(AppModule, {
@@ -98,6 +100,16 @@ async function bootstrap() {
     });
 
     app.enableShutdownHooks();
+
+    try {
+        const redisClient = app.get<Redis>(REDIS_CLIENT);
+        await redisClient.ping();
+        pinoLogger.log('Eager Redis client connection successful (PING successful).');
+    } catch (err) {
+        pinoLogger.error('Failed to PING Redis during bootstrap. Shutting down.', err);
+        await app.close();
+        process.exit(1);
+    }
 
     const port = configService.get<number>('PORT', 3000);
     await app.listen(port);
