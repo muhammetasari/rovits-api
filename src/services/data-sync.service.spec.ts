@@ -151,5 +151,49 @@ describe('DataSyncService', () => {
             expect(mockLogger.log).toHaveBeenCalledWith(expect.stringContaining('Finished HYBRID sync process. Final DB count: 4'));
             expect(mockLogger.error).not.toHaveBeenCalled();
         });
+
+        it('should count enrichment errors and proceed with successful ones', async () => {
+            // Arrange discovery to produce 3 filtered IDs: nearby1, nearby2, text1
+            mockGooglePlacesService.discoverPlacesNearby.mockResolvedValue({ places: [
+                { id: 'nearby1', types: ['tourist_attraction'] },
+                { id: 'nearby2', types: ['museum'] },
+            ] });
+            mockGooglePlacesService.discoverPlacesByText
+                .mockResolvedValue({ places: [{ id: 'text1', types: ['historical_landmark'] }], nextPageToken: undefined });
+
+            mockGooglePlacesService.getPlaceDetails.mockImplementation(async (placeId: string) => {
+                if (placeId === 'nearby1') return { id: 'nearby1' };
+                if (placeId === 'nearby2') throw new Error('details failed');
+                if (placeId === 'text1') return { id: 'text1' };
+            });
+
+            mockPlaceModel.bulkWrite.mockResolvedValue({ upsertedCount: 2, modifiedCount: 0 });
+
+            const res = await service.hybridSyncPlacesData(10);
+
+            expect(res.filtered).toBe(3);
+            expect(res.enriched).toBe(2); // nearby2 failed
+            expect(res.saved).toBe(2);
+            expect(res.errors).toBeGreaterThanOrEqual(1);
+            expect(mockLogger.error).toHaveBeenCalledWith(expect.stringContaining('Failed to get details for placeId nearby2'));
+        });
+
+        it('should increment errors and return saved=0 when DB bulkWrite fails', async () => {
+            mockGooglePlacesService.discoverPlacesNearby.mockResolvedValue({ places: [
+                { id: 'n1', types: ['museum'] },
+            ] });
+            mockGooglePlacesService.discoverPlacesByText.mockResolvedValue({ places: [], nextPageToken: undefined });
+            mockGooglePlacesService.getPlaceDetails.mockResolvedValue({ id: 'n1' });
+
+            mockPlaceModel.bulkWrite.mockRejectedValue(new Error('db down'));
+
+            const res = await service.hybridSyncPlacesData(10);
+
+            expect(res.filtered).toBe(1);
+            expect(res.enriched).toBe(1);
+            expect(res.saved).toBe(0);
+            expect(res.errors).toBeGreaterThanOrEqual(1);
+            expect(mockLogger.error).toHaveBeenCalledWith(expect.stringContaining('Error during database bulk write:'), expect.any(String));
+        });
     });
 });
