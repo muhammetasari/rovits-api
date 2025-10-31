@@ -3,8 +3,12 @@ import { Test, TestingModule } from '@nestjs/testing';
 import request from 'supertest';
 import { PlaceFinderController } from './place-finder.controller';
 import { GooglePlacesService } from '../services/google-places.service';
+import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { RolesGuard } from '../auth/roles.guard';
+import { AuthModule } from '../auth/auth.module';
+import { ConfigModule } from '@nestjs/config';
 
-describe('PlaceFinder E2E (controller-only)', () => {
+describe('PlaceFinder E2E (controller-only, auth bypassed)', () => {
     let app: INestApplication;
     const googleMock = {
         searchPlace: jest.fn(),
@@ -12,9 +16,17 @@ describe('PlaceFinder E2E (controller-only)', () => {
 
     beforeAll(async () => {
         const moduleFixture: TestingModule = await Test.createTestingModule({
+            imports: [ConfigModule.forRoot({ isGlobal: true }), AuthModule],
             controllers: [PlaceFinderController],
-            providers: [{ provide: GooglePlacesService, useValue: googleMock }],
-        }).compile();
+            providers: [GooglePlacesService],
+        })
+            .overrideGuard(JwtAuthGuard)
+            .useValue({ canActivate: () => true })
+            .overrideGuard(RolesGuard)
+            .useValue({ canActivate: () => true })
+            .overrideProvider(GooglePlacesService)
+            .useValue(googleMock)
+            .compile();
 
         app = moduleFixture.createNestApplication();
         app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
@@ -42,5 +54,3 @@ describe('PlaceFinder E2E (controller-only)', () => {
         expect(res.status).toBe(400);
     });
 });
-
-

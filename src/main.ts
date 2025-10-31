@@ -6,6 +6,7 @@ import { Rfc7807Filter } from './common/filters/rfc7807.filter';
 import helmet from 'helmet';
 import { ConfigService } from '@nestjs/config';
 import { Logger as PinoLogger } from 'nestjs-pino';
+import * as bodyParser from 'body-parser';
 
 async function bootstrap() {
     const app = await NestFactory.create(AppModule, {
@@ -39,8 +40,11 @@ async function bootstrap() {
         methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
         credentials: true,
         allowedHeaders: ['Content-Type', 'Authorization', 'Idempotency-Key', 'X-Correlation-ID'],
-        exposedHeaders: ['Retry-After', 'RateLimit-Remaining', 'X-Correlation-ID'],
+        exposedHeaders: ['Retry-After', 'RateLimit-Remaining', 'X-Correlation-ID', 'Idempotency-Replayed'],
     });
+
+    app.use(bodyParser.json({ limit: configService.get<string>('REQUEST_JSON_LIMIT', '5mb') }));
+    app.use(bodyParser.urlencoded({ limit: configService.get<string>('REQUEST_URLENCODED_LIMIT', '5mb'), extended: true }));
 
     app.useGlobalPipes(
         new ValidationPipe({
@@ -72,6 +76,17 @@ async function bootstrap() {
         .addApiKey(
             { type: 'apiKey', name: 'x-api-key', in: 'header' },
             'ApiKeyAuth',
+        )
+        .addBearerAuth(
+            {
+                type: 'http',
+                scheme: 'bearer',
+                bearerFormat: 'JWT',
+                name: 'JWT',
+                description: 'Enter JWT token',
+                in: 'header',
+            },
+            'BearerAuth',
         )
         .build();
 

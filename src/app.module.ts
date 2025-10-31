@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, MiddlewareConsumer, NestModule, RequestMethod } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { MongooseModule } from '@nestjs/mongoose';
 import { GooglePlacesService } from './services/google-places.service';
@@ -16,6 +16,10 @@ import { MetricsModule } from './metrics/metrics.module';
 import { LoggerModule } from 'nestjs-pino';
 import { validationSchema } from './config/validation.schema';
 import * as crypto from 'crypto';
+import { AuthModule } from './auth/auth.module';
+import { PassportModule } from '@nestjs/passport';
+import { RedisModule } from './redis/redis.module';
+import { IdempotencyMiddleware } from './common/middleware/idempotency.middleware';
 
 @Module({
     imports: [
@@ -87,9 +91,12 @@ import * as crypto from 'crypto';
             inject: [ConfigService],
         }),
         MongooseModule.forFeature([{ name: Place.name, schema: PlaceSchema }]),
+        PassportModule,
+        AuthModule,
         JobProcessorModule,
         HealthModule,
         MetricsModule,
+        RedisModule,
     ],
     controllers: [PlaceFinderController, AdminController],
     providers: [
@@ -102,4 +109,13 @@ import * as crypto from 'crypto';
         },
     ],
 })
-export class AppModule {}
+export class AppModule implements NestModule {
+    configure(consumer: MiddlewareConsumer) {
+        consumer
+            .apply(IdempotencyMiddleware)
+            .forRoutes(
+                { path: 'api/v1/place-finder/bulk-search', method: RequestMethod.POST },
+                { path: 'api/v1/admin/sync-places', method: RequestMethod.POST }
+            );
+    }
+}

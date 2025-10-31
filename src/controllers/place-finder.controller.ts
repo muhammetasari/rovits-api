@@ -1,14 +1,21 @@
-import { Controller, Get, Post, Query, Body, HttpCode, HttpStatus, BadRequestException } from '@nestjs/common';
+import { Controller, Get, Post, Query, Body, HttpCode, HttpStatus, BadRequestException, UseGuards } from '@nestjs/common';
 import { GooglePlacesService } from '../services/google-places.service';
 import { BulkSearchDto } from '../dto/bulk-search.dto';
-import { ApiTags, ApiOperation, ApiResponse, ApiQuery, ApiBody } from '@nestjs/swagger';
+import { ApiTags, ApiOperation, ApiResponse, ApiQuery, ApiBody, ApiBearerAuth } from '@nestjs/swagger';
+import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { RolesGuard } from '../auth/roles.guard';
+import { Roles } from '../auth/roles.decorator';
+import { Role } from '../auth/roles.enum';
 
 @ApiTags('PlaceFinder')
+@ApiBearerAuth('BearerAuth')
 @Controller('place-finder')
+@UseGuards(JwtAuthGuard, RolesGuard)
 export class PlaceFinderController {
     constructor(private googlePlaces: GooglePlacesService) {}
 
     @Get('search')
+    @Roles(Role.User)
     @ApiOperation({
         summary: 'Single Place Search',
         description: 'Performs a simple text search and returns the top matching place (simplified response).'
@@ -28,7 +35,7 @@ export class PlaceFinderController {
     })
     @ApiResponse({ status: HttpStatus.BAD_REQUEST, description: 'Query parameter "q" is missing.' })
     @ApiResponse({ status: HttpStatus.NOT_FOUND, description: 'Handled by Rfc7807Filter if GoogleAPI throws 404.' })
-    @ApiResponse({ status: HttpStatus.UNAUTHORIZED, description: 'Handled by Rfc7807Filter if GoogleAPI key is invalid.' })
+    @ApiResponse({ status: HttpStatus.UNAUTHORIZED, description: 'Invalid or missing JWT.' })
     async search(@Query('q') query: string) {
         if (!query) {
             throw new BadRequestException('q parameter required');
@@ -44,6 +51,7 @@ export class PlaceFinderController {
     }
 
     @Post('bulk-search')
+    @Roles(Role.User)
     @HttpCode(HttpStatus.OK)
     @ApiOperation({
         summary: 'Bulk Place Search',
@@ -94,6 +102,7 @@ export class PlaceFinderController {
     }
 
     @Get('details')
+    @Roles(Role.User)
     @ApiOperation({
         summary: 'Get Full Place Details',
         description: 'Retrieves comprehensive details for a place using either its Google Place ID or by searching its name.'
@@ -102,7 +111,7 @@ export class PlaceFinderController {
     @ApiQuery({ name: 'name', description: 'Name of the place to search for (used if placeId is not provided)', type: String, required: false })
     @ApiResponse({ status: HttpStatus.OK, description: 'Full place details.' })
     @ApiResponse({ status: HttpStatus.BAD_REQUEST, description: 'Missing both placeId and name parameters.' })
-    @ApiResponse({ status: HttpStatus.NOT_FOUND, description: 'Place not found (Handled by Rfc7807Filter).' })
+    @ApiResponse({ status: HttpStatus.NOT_FOUND, description: 'Place not found (Handled by Rfc7f807Filter).' })
     async getDetails(
         @Query('placeId') placeId?: string,
         @Query('name') name?: string
@@ -134,9 +143,10 @@ export class PlaceFinderController {
     }
 
     @Get('debug/search')
+    @Roles(Role.Admin)
     @ApiOperation({
         summary: '[Debug] Raw Search',
-        description: 'Returns the raw, unfiltered response from the Google Places Text Search API. (Internal/Debug Use Only)'
+        description: 'Returns the raw, unfiltered response from the Google Places Text Search API. (Internal/Debug Use Only - Requires Admin Role)'
     })
     @ApiQuery({ name: 'q', description: 'The search query', type: String, required: true })
     @ApiResponse({ status: HttpStatus.OK, description: 'Raw Google API response.' })
@@ -148,9 +158,10 @@ export class PlaceFinderController {
     }
 
     @Get('debug/details')
+    @Roles(Role.Admin)
     @ApiOperation({
         summary: '[Debug] Raw Details',
-        description: 'Returns the raw, unfiltered response from the Google Places Details API. (Internal/Debug Use Only)'
+        description: 'Returns the raw, unfiltered response from the Google Places Details API. (Internal/Debug Use Only - Requires Admin Role)'
     })
     @ApiQuery({ name: 'placeId', description: 'Google Place ID', type: String, required: true })
     @ApiResponse({ status: HttpStatus.OK, description: 'Raw Google API response.' })
@@ -170,7 +181,7 @@ export class PlaceFinderController {
     async getInfo() {
         return {
             service: 'Rovits Place Finder API',
-            version: '1.0.0 (PR-004 Integrated)',
+            version: '1.0.0 (PR-006 Integrated)',
             swaggerDocs: '/docs',
             endpoints: {
                 production: {

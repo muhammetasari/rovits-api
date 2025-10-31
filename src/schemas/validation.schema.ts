@@ -6,8 +6,6 @@ export const validationSchema = Joi.object({
     NODE_ENV: Joi.string()
         .valid('development', 'production', 'test')
         .default('development'),
-    REQUEST_JSON_LIMIT: Joi.string().default('5mb'),
-    REQUEST_URLENCODED_LIMIT: Joi.string().default('5mb'),
 
     LOG_LEVEL: Joi.string()
         .valid('trace', 'debug', 'info', 'warn', 'error', 'fatal')
@@ -19,8 +17,6 @@ export const validationSchema = Joi.object({
     JWT_SECRET: Joi.string().required(),
     JWT_ISSUER: Joi.string().uri().required(),
     JWT_AUDIENCE: Joi.string().uri().required(),
-
-    IDEMPOTENCY_KEY_TTL_SECONDS: Joi.number().default(86400),
 
     DATABASE_URL: Joi.string().uri().required(),
     REDIS_HOST: Joi.string().default('localhost'),
