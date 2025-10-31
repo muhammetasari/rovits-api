@@ -5,7 +5,7 @@ import { AppModule } from '../app.module';
 import { GooglePlacesService } from '../services/google-places.service';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
-import { Role } from './roles.enum';
+import { Role } from '../auth/roles.enum';
 
 describe('Auth Guards E2E (PlaceFinder)', () => {
     let app: INestApplication;

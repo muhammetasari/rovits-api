@@ -6,7 +6,7 @@ export class ExplorePlacesDto {
     @IsNumber()
     @Min(-90)
     @Max(90)
-    @Type(() => Number) // Query parametreleri string gelir, number'a çevir
+    @Type(() => Number)
     latitude: number; // Merkez Enlem
 
     @IsNotEmpty()
@@ -14,19 +14,19 @@ export class ExplorePlacesDto {
     @Min(-180)
     @Max(180)
     @Type(() => Number)
-    longitude: number; // Merkez Boylam
+    longitude: number;
 
     @IsNotEmpty()
     @IsNumber()
-    @Min(100) // Min 100 metre
-    @Max(50000) // Max 50 km (Google sınırı)
+    @Min(100)
+    @Max(50000)
     @Type(() => Number)
-    radius: number; // Metre cinsinden yarıçap
+    radius: number;
 
-    @IsOptional() // Opsiyonel, varsayılan 100 olabilir
+    @IsOptional()
     @IsNumber()
     @Min(1)
-    @Max(100) // Google bir kerede 20 döndürse de, hedefimiz max 100 olsun
+    @Max(100)
     @Type(() => Number)
-    maxResults?: number = 100; // İstenen maksimum sonuç sayısı
+    maxResults?: number = 100;
 }

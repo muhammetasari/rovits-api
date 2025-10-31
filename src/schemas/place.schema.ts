@@ -48,16 +48,16 @@ export class Place {
     @Prop({ type: String, unique: true, index: true, required: true })
     id: string; // Google Place ID
 
-    @Prop({ type: DisplayName, index: true }) // DisplayName'e basit index ekleyebiliriz
+    @Prop({ type: DisplayName, index: true })
     displayName: DisplayName;
 
-    @Prop({ type: String, index: true }) // Adrese basit index ekleyebiliriz
+    @Prop({ type: String, index: true })
     formattedAddress: string;
 
     @Prop({ type: [AddressComponent] })
     addressComponents: AddressComponent[];
 
-    @Prop({ type: Location }) // Geospatial index aşağıda tanımlanıyor
+    @Prop({ type: Location })
     location: Location;
 
     @Prop({ type: Number })
@@ -66,7 +66,7 @@ export class Place {
     @Prop({ type: Number })
     userRatingCount?: number;
 
-    @Prop({ type: [String], index: true }) // Types'a index ekliyoruz
+    @Prop({ type: [String], index: true })
     types: string[];
 
     @Prop({ type: OpeningHours })
@@ -84,7 +84,7 @@ export class Place {
     @Prop({ type: String })
     nationalPhoneNumber?: string;
 
-    @Prop({ type: String, index: true }) // Duruma göre filtreleme için index
+    @Prop({ type: String, index: true })
     businessStatus?: string;
 
     @Prop({ type: String })
@@ -111,6 +111,6 @@ PlaceSchema.index({ location: '2dsphere' });
 
 PlaceSchema.index(
     { 'displayName.text': 'text', formattedAddress: 'text' },
-    { default_language: 'turkish', name: 'TextIndex' } // Türkçe dil desteği
+    { default_language: 'turkish', name: 'TextIndex' }
 );
 

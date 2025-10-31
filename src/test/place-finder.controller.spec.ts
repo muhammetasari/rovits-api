@@ -1,5 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { PlaceFinderController } from './place-finder.controller';
+import { PlaceFinderController } from '../controllers/place-finder.controller';
 import { GooglePlacesService } from '../services/google-places.service';
 import { BadRequestException } from '@nestjs/common';
 

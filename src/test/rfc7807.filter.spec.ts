@@ -1,4 +1,4 @@
-import { Rfc7807Filter } from './rfc7807.filter';
+import { Rfc7807Filter } from '../common/filters/rfc7807.filter';
 import { ArgumentsHost, BadRequestException, HttpException } from '@nestjs/common';
 
 function createHost(url = '/test') {

@@ -1,5 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { GooglePlacesService } from './google-places.service';
+import { GooglePlacesService } from '../services/google-places.service';
 import { ConfigService } from '@nestjs/config';
 import { BadGatewayException, UnauthorizedException, BadRequestException } from '@nestjs/common';
 

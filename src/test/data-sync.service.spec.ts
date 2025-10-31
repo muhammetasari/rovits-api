@@ -1,8 +1,8 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { getModelToken } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
-import { DataSyncService } from './data-sync.service';
-import { GooglePlacesService } from './google-places.service';
+import { DataSyncService } from '../services/data-sync.service';
+import { GooglePlacesService } from '../services/google-places.service';
 import { Place, PlaceDocument } from '../schemas/place.schema';
 import { Logger } from '@nestjs/common';
 

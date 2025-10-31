@@ -1,7 +1,7 @@
 import { INestApplication } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import request from 'supertest';
-import { HealthModule } from './health.module';
+import { HealthModule } from '../health/health.module';
 import { MetricsModule } from '../metrics/metrics.module';
 import { DiskHealthIndicator, MemoryHealthIndicator } from '@nestjs/terminus';
 

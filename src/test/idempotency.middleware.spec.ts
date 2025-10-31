@@ -1,5 +1,5 @@
-import { IdempotencyMiddleware } from './idempotency.middleware';
-import { REDIS_CLIENT } from '../../redis/redis.provider';
+import { IdempotencyMiddleware } from '../common/middleware/idempotency.middleware';
+import { REDIS_CLIENT } from '../redis/redis.provider';
 import { ConfigService } from '@nestjs/config';
 import { Test, TestingModule } from '@nestjs/testing';
 import { Request, Response, NextFunction } from 'express';

@@ -1,4 +1,4 @@
-import { PlaceSchema } from './place.schema';
+import { PlaceSchema } from '../schemas/place.schema';
 
 describe('PlaceSchema', () => {
     it('should require id field', () => {

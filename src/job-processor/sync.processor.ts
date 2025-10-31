@@ -5,13 +5,12 @@ import { Injectable, Logger } from '@nestjs/common';
 import { Job } from 'bullmq';
 import { DataSyncService } from '../services/data-sync.service';
 
-// Job verisi interface'i
 interface SyncPlacesJobData {
     maxResults: number;
 }
 
 @Injectable()
-@Processor('syncQueue') // <-- KONTROL ET: Burası 'syncQueue' olmalı
+@Processor('syncQueue') //
 export class SyncProcessor extends WorkerHost {
     private readonly logger = new Logger(SyncProcessor.name);
 
@@ -19,11 +18,9 @@ export class SyncProcessor extends WorkerHost {
         super();
     }
 
-    // Gelen tüm işleri karşılayan ana metot
     async process(job: Job<SyncPlacesJobData, any, string>): Promise<any> {
         this.logger.log(`Processing job ID: ${job.id}, Name: ${job.name}`);
 
-        // KONTROL ET: Burası 'sync-places-job' olmalı
         switch (job.name) {
             case 'sync-places-job':
                 try {
@@ -41,7 +38,6 @@ export class SyncProcessor extends WorkerHost {
         }
     }
 
-    // --- Event Listener'lar ---
 
     @OnWorkerEvent('completed')
     onCompleted(job: Job, result: any): void {

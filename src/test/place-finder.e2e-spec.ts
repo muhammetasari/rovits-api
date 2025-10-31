@@ -1,7 +1,7 @@
 import { INestApplication, ValidationPipe, VersioningType } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import request from 'supertest';
-import { PlaceFinderController } from './place-finder.controller';
+import { PlaceFinderController } from '../controllers/place-finder.controller';
 import { GooglePlacesService } from '../services/google-places.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RolesGuard } from '../auth/roles.guard';

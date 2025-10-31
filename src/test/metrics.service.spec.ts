@@ -1,4 +1,4 @@
-import { MetricsService } from './metrics.service';
+import { MetricsService } from '../metrics/metrics.service';
 
 describe('MetricsService', () => {
     let service: MetricsService;

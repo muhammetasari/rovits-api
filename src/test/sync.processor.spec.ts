@@ -1,4 +1,4 @@
-import { SyncProcessor } from './sync.processor';
+import { SyncProcessor } from '../job-processor/sync.processor';
 import { DataSyncService } from '../services/data-sync.service';
 
 describe('SyncProcessor', () => {

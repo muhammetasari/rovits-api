@@ -1,6 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
-import { GooglePlacesService } from './google-places.service';
+import { GooglePlacesService } from '../services/google-places.service';
 import { NotFoundException, BadRequestException, UnauthorizedException, BadGatewayException, InternalServerErrorException } from '@nestjs/common';
 
 const mockFetch = jest.fn();

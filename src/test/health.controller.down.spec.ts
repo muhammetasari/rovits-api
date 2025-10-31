@@ -1,5 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { HealthModule } from './health.module';
+import { HealthModule } from '../health/health.module';
 import { HealthCheckService } from '@nestjs/terminus';
 import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
